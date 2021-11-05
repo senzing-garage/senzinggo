@@ -40,27 +40,6 @@ class Colors:
     COLEND = '\033[0m'
 
 
-# Documentation
-# -------------
-
-# Docker on same machine
-# Firewall allow local machine to connect but not external
-# Document using it in quick start and update qs
-#   Swagger and curl and gui tools too
-# Note about purging
-# Warning that accessible to outside host
-# Not meant or production, basic local stack for demo/dev/test
-
-# TO CONSIDER
-# -----
-# Make script work to do a package without other requirements like G2Path
-# Arg to use another registry other than Docker Hub
-# Add support for MSSQL
-# Use env var settings to override default command
-#   https://github.com/Senzing/docker-compose-demo/blob/291142de3c33e82ee658f0b411c77cd88921ee44/resources/postgresql/docker-compose-rabbitmq-postgresql.yaml#L229-L231
-# SSL/HTTPS
-
-
 def get_senzing_root(script_name):
     """ Get the SENZING_ROOT env var """
 
