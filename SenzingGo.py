@@ -25,9 +25,9 @@ except ImportError:
     sys.exit(1)
 
 __all__ = []
-__version__ = '1.3.0'  # See https://www.python.org/dev/peps/pep-0396/
+__version__ = '1.4.0'  # See https://www.python.org/dev/peps/pep-0396/
 __date__ = '2021-09-10'
-__updated__ = '2021-11-04'
+__updated__ = '2021-11-08'
 
 
 class Colors:
@@ -48,11 +48,11 @@ def get_senzing_root(script_name):
     if not senz_root:
         if os.geteuid() == 0:
             print(
-                f'\n{Colors.ERROR}ERROR:{Colors.COLEND} Running with sudo. Ensure the setupEnv file is sourced and run with: sudo --preserve-env ./{script_name}')
-            sys.exit(1)
+                f'\n{Colors.WARN}WARNING:{Colors.COLEND} Running with sudo and SENZING_ROOT isn\'t set. Ensure setupEnv file is sourced and run with "sudo --preserve-env ./{script_name}"')
+        else:
+            print(f'\n{Colors.WARN}WARNING:{Colors.COLEND} SENZING_ROOT isn\'t set please source the project setupEnv file to use all features')
 
-        print(f'\n{Colors.ERROR}ERROR:{Colors.COLEND} SENZING_ROOT isn\'t set please source the project setupEnv file')
-        sys.exit(1)
+        print(f'\n{Colors.WARN}WARNING:{Colors.COLEND} Without SENZING_ROOT set, only --saveImages (-si) and --loadImages modes are available')
 
     return senz_root
 
@@ -70,12 +70,12 @@ def get_host_name():
     # Otherwise set to localhost, can be overridden with the -ho CLI arg
     if not host_name:
         print(textwrap.dedent(f'''\n\
-            {Colors.WARN}WARNING:{Colors.COLEND} Unable to detect a hostname, using 127.0.0.1., this could cause issues.
+            {Colors.WARN}WARNING:{Colors.COLEND} Unable to detect a hostname, using localhost, this could cause issues.
                                   
                      If networking issues arise please set a true hostname or try using the --host (-ho) argument
                      to specify host or ip address.
                 '''))
-        host_name = '127.0.0.1'
+        host_name = 'localhost'
         sleep(3)
 
     return host_name
@@ -91,8 +91,7 @@ def ini_localhost_check(ini_file_name):
             line_check = line.lstrip().lower()
 
             # Look for localhost in normal and cluster ini lines
-            if (line_check.startswith('connection') or line_check.startswith('db_1')) and (
-                    '@localhost:' in line_check or '@127.0.0.1:' in line_check):
+            if (line_check.startswith('connection') or line_check.startswith('db_1')) and ('@localhost:' in line_check or '@127.0.0.1:' in line_check):
                 print(textwrap.dedent(f'''\n\
                     {Colors.ERROR}ERROR:{Colors.COLEND} Connection string cannot use localhost or 127.0.0.1, use a true hostname or ip address
                            {line}
@@ -224,14 +223,14 @@ def docker_checks(script_name):
         if check.returncode != 0:
             if 'permission denied' and 'socket' in check.stderr:
                 print(
-                    f'\n{Colors.ERROR}ERROR:{Colors.COLEND} User cannot run Docker, you need to run with sudo --preserve-env ./{script_name} or be added to the docker group...\n')
+                    f'\n{Colors.ERROR}ERROR:{Colors.COLEND} User cannot run Docker, you need to run with "sudo --preserve-env ./{script_name}" or be added to the docker group...\n')
             else:
                 print(f'\n{Colors.ERROR}ERROR:{Colors.COLEND} {check.stderr}')
             sys.exit(1)
 
-    if os.geteuid() == 0 and 'SENZING_ROOT' not in os.environ:
-        print(f'SENZING_ROOT isn\'t set please source setupEnv and run with: sudo --preserve-env ./{script_name}')
-        sys.exit(1)
+    ####if os.geteuid() == 0 and 'SENZING_ROOT' not in os.environ:
+    ####    print(f'SENZING_ROOT isn\'t set please source setupEnv and run with "sudo --preserve-env ./{script_name}"')
+    ####    sys.exit(1)
 
 
 def docker_init():
@@ -265,7 +264,7 @@ def pull_default_images(docker_client, docker_containers, no_web_app, no_swagger
     for key, image_list in docker_containers.items():
 
         # Skip pulling images if CLI args request not to deploy
-        if no_web_app and image_list['imagename'] == 'senzing/web-app-demo':
+        if no_web_app and image_list['imagename'] == 'senzing/entity-search-web-app':
             continue
 
         if no_swagger and image_list['imagename'] == 'swaggerapi/swagger-ui':
@@ -418,7 +417,7 @@ def containers_stop_remove(senzing_proj_name,
     # Don't print message if in startup and deleting any existing containers
     if not running_containers and not startup_remove:
         print(
-            f'No matching containers for {senzing_proj_name}, were the containers created with a different suffix with -p (--projectSuffix)?')
+            f'No matching containers for {senzing_proj_name}, were the containers created with a different suffix with -ps (--projectSuffix)?')
         all_containers = docker_cont_list(docker_client, all_conts=True)
         if all_containers:
             print('\nAvailable containers:\n')
@@ -472,8 +471,22 @@ def containers_stop_remove(senzing_proj_name,
                 network_list[0].remove()
 
 
-def containers_info(docker_client, docker_containers, senzing_proj_name, host_name):
-    """ Get info for running containers, e.g. the url they are running on after startup information is lost """
+def containers_info(docker_client, docker_containers, senzing_proj_name, host_name, rest_api_command):
+    """ Get info for running containers, e.g. the url they are running on after startup information is lost
+        Always show the command used for the REST Server
+    """
+
+    def show_api_command(rest_api_command):
+        ''' Show API Server command for reference '''
+
+        print(textwrap.dedent(f'''\n
+            Command the REST API Server container is starting with:
+        
+                {' '.join([c for c in rest_api_command.split('  ') if c])}
+              
+        '''))
+
+        sys.exit(0)
 
     print(f'\nLooking for containers matching {senzing_proj_name}...')
 
@@ -481,6 +494,7 @@ def containers_info(docker_client, docker_containers, senzing_proj_name, host_na
 
     if not containers:
         print(f'\nThere are currently no containers matching {senzing_proj_name}')
+        show_api_command(rest_api_command)
         sys.exit(0)
 
     for name in [c.name for c in containers]:
@@ -507,7 +521,7 @@ def containers_info(docker_client, docker_containers, senzing_proj_name, host_na
                 str(docker_containers[key]["containerport"]) + "/tcp"][0]["HostPort"]
             print(f'\tURL:    http://{host_name}:{host_port}')
 
-    sys.exit(0)
+    show_api_command(rest_api_command)
 
 
 def container_logs(docker_client, logs_string=None):
@@ -570,8 +584,7 @@ def get_timestamp():
     return datetime.now().strftime("%Y%m%d_%H%M%S")
 
 
-def save_images(docker_client, docker_containers, save_images, save_images_path, access_dockerhub, no_web_app,
-                no_swagger, senzing_proj_name):
+def save_images(docker_client, docker_containers, save_images, save_images_path, access_dockerhub, no_web_app, no_swagger):
     """ Package up base set or custom set of images to transfer and use on another system """
 
     avail_images_with_tag = []
@@ -582,7 +595,7 @@ def save_images(docker_client, docker_containers, save_images, save_images_path,
 
     if not access_dockerhub:
         print(
-            f'\n{Colors.WARN}WARNING:{Colors.COLEND} Cannot reach internet to pull images, can only package existing ones if available.')
+            f'\n{Colors.WARN}WARNING:{Colors.COLEND} Cannot reach internet to pull images, can only package existing ones if available locally')
 
     # If a list of packages was specified pull them, otherwise no arguments on saveimages arg
     if len(save_images) > 0:
@@ -634,7 +647,7 @@ def save_images(docker_client, docker_containers, save_images, save_images_path,
                 avail_images_with_tag.append(candidate_image)
 
     if not avail_images_with_tag:
-        print(f'\n{Colors.ERROR}ERROR:{Colors.COLEND} There are no images to save')
+        print(f'\n{Colors.ERROR}ERROR:{Colors.COLEND} There are no locally available images to save')
         sys.exit(1)
 
     # Write each image out to a file, named as the image with / and : replaced with -
@@ -653,7 +666,7 @@ def save_images(docker_client, docker_containers, save_images, save_images_path,
             print(f'\n{Colors.ERROR}ERROR:{Colors.COLEND} {ex}')
             sys.exit(1)
 
-    compressed_package = f'{package_path}/SzGoImages-{senzing_proj_name}_{get_timestamp()}.tgz'
+    compressed_package = f'{package_path}/SzGoImages_{get_timestamp()}.tgz'
     print(f'\nCompressing saved images to {compressed_package}, this will take several minutes...')
 
     # Add the image tar files to compressed tar and delete the image tar files
@@ -923,6 +936,12 @@ def main():
     SCRIPT_NAME = Path(__file__).name
     SCRIPT_STEM = Path(__file__).stem
 
+    # Set var path to /tmp first to use with --saveImages if SENZING_ROOT isn't set and working in a project
+    # i.e., use SenzingGo to only do save and load images independent of having a Senzing API install & project
+    # Set project and host names to blank to also allow independent use of SenzingGo
+    SENZING_VAR_PATH = pathlib.Path('/tmp')
+    senzing_proj_name = host_name = ''
+
     # URLs for required assets
     DOCKER_LATEST_URL = 'https://raw.githubusercontent.com/Senzing/knowledge-base/master/lists/docker-versions-latest.sh'
     DOCKERHUB_URL = 'https://hub.docker.com/u/senzing/'
@@ -931,14 +950,21 @@ def main():
 
     # Check setup env has been run and determine project name from path
     SENZING_ROOT = get_senzing_root(SCRIPT_NAME)
-    SENZING_ROOT_PATH = pathlib.PurePath(SENZING_ROOT)
-    SENZING_VAR_PATH = SENZING_ROOT_PATH / 'var'
-    senzing_proj_name = get_senzing_proj_name(SENZING_ROOT_PATH.name)
 
-    SZGO_REST_JSON = 'SzGo-rest-api.json'
-    SZGO_REST_SPEC = 'specifications/open-api'
+    # Only perform the following if SENZING_ROOT is set and thus working with a Senzing project and not independent
+    # with --saveImages / --loadImages
+    if SENZING_ROOT:
+        SENZING_ROOT_PATH = pathlib.PurePath(SENZING_ROOT)
+        SENZING_VAR_PATH = SENZING_ROOT_PATH / 'var'
+        senzing_proj_name = get_senzing_proj_name(SENZING_ROOT_PATH.name)
 
-    LIB_MY_SQL = 'libmysqlclient.so.21'
+        SZGO_REST_JSON = 'SzGo-rest-api.json'
+        SZGO_REST_SPEC = 'specifications/open-api'
+
+        LIB_MY_SQL = 'libmysqlclient.so.21'
+
+        # Attempt to get hostname / IP of machine where running
+        host_name = get_host_name()
 
     SENZING_SUPPORT = 'For further assistance contact support@senzing.com'
     SZGO_HELP ='https://github.com/Senzing/senzinggo'
@@ -983,11 +1009,14 @@ def main():
             }
          }
 
-    # Attempt to get hostname / IP of machine where running
-    host_name = get_host_name()
-
-    # Don't allow argparse to create abbreviations of options
-    szgo_parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter, allow_abbrev=False)
+    # Don't allow argparse to create abbreviations of options - allow_abbrev
+    szgo_parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter,
+                                          allow_abbrev=False,
+                                          description = textwrap.dedent(f'''
+                                            Utility to rapidly deploy Docker containers for REST API server, Entity Search App and Swagger UI
+                                            
+                                            Additional information: {SZGO_HELP}
+                                            '''))
 
     szgo_parser.add_argument('-c', '--iniFile', default=None, nargs=1,
                              help=textwrap.dedent('''\
@@ -1098,7 +1127,7 @@ def main():
 
                                 '''))
 
-    szgo_parser.add_argument('-ps', '--projectSuffix', type=str, default=None, nargs=1, metavar='SUFFIX',
+    szgo_parser.add_argument('-ps', '--projectSuffix', type=str, default=senzing_proj_name, nargs=1, metavar='SUFFIX',
                              help=textwrap.dedent(f'''\
                                 Suffix to use for container names, default=%(default)s
 
@@ -1112,7 +1141,7 @@ def main():
 
     # Undocumented args - advanced usage with guidance from Senzing support
     szgo_parser.add_argument('-il', '--imagesList', default=False, action='store_true', help=argparse.SUPPRESS)
-    szgo_parser.add_argument('-ac', '--apiServerCommand', type=str, default=None, help=argparse.SUPPRESS, nargs=1, )
+    szgo_parser.add_argument('-ac', '--apiServerCommand', type=str, default=None, help=argparse.SUPPRESS, nargs=1)
     szgo_parser.add_argument('-at', '--apiTag', type=str, default=None, help=argparse.SUPPRESS, nargs='?')
     szgo_parser.add_argument('-wt', '--webAppTag', type=str, default=None, help=argparse.SUPPRESS, nargs='?')
     szgo_parser.add_argument('-st', '--swaggerTag', type=str, default=None, help=argparse.SUPPRESS, nargs='?')
@@ -1123,41 +1152,59 @@ def main():
 
     host_name = args.host
 
-    # Import G2Paths after the get_senzing_root() check. G2Paths checks for SENZING_ROOT and exits if not set
-    import G2Paths
-    ini_file_name = pathlib.Path(G2Paths.get_G2Module_ini_path()) if not args.iniFile else pathlib.Path(
-        args.iniFile[0]).resolve()
-    G2Paths.check_file_exists_and_readable(ini_file_name)
+    # Warning message printed by get_senzing_root(), if SENZING_ROOT isn't set only allow
+    # save / load images mode (and non-documented images list)
+    if not hasattr(args, 'saveImages') and not args.loadImages and not args.imagesList and not SENZING_ROOT:
+        sys.exit(1)
 
-    # Check ini file isn't using localhost for connection strings which won't work from within container
-    ini_localhost_check(ini_file_name)
+    # If running in deployment mode process the INI file for use
+    if not hasattr(args, 'saveImages') and not args.loadImages and not args.imagesList:
 
-    # Convert G2Module.ini to JSON to pass to container
-    ini_json = convert_ini2json(ini_file_name)
+        # Import G2Paths after the get_senzing_root() check. G2Paths checks for SENZING_ROOT and exits if not set
+        import G2Paths
+        ini_file_name = pathlib.Path(G2Paths.get_G2Module_ini_path()) if not args.iniFile else pathlib.Path(
+            args.iniFile[0]).resolve()
+        G2Paths.check_file_exists_and_readable(ini_file_name)
 
-    # Convert INI to JSON, useful for using own REST API command
-    if args.iniToJson or args.iniToJsonPretty:
-        if args.iniToJson:
-            print(ini_json)
-        if args.iniToJsonPretty:
-            print(json.dumps(ini_json, indent=4))
-        sys.exit(0)
+        # Check ini file isn't using localhost for connection strings which won't work from within container
+        ini_localhost_check(ini_file_name)
+
+        # Convert G2Module.ini to JSON to pass to container
+        ini_json = convert_ini2json(ini_file_name)
+
+        # Convert INI to JSON, useful for using own REST API command
+        if args.iniToJson or args.iniToJsonPretty:
+            if args.iniToJson:
+                print(ini_json)
+            if args.iniToJsonPretty:
+                print(json.dumps(ini_json, indent=4))
+            sys.exit(0)
+
+        # Build the command for the REST API Server, build early to use in other functions
+        rest_api_command=f'--enable-admin {"true" if args.apiAdmin else "false"} \
+                           --allowed-origins * \
+                           --concurrency 10 \
+                           --read-only false \
+                           --verbose true \
+                           --http-port 8250 \
+                           --bind-addr all \
+                           --init-file /etc/opt/senzing/{ini_file_name.name + "_SzGo.json"}' \
+            if not args.apiServerCommand else args.apiServerCommand[0]
 
     # Check Docker Docker is installed, sudo access?
     docker_checks(SCRIPT_NAME)
     docker_client = docker_init()
 
     # Create Docker network if it doesn't exist
-    if not args.contStop or not args.contRemove or not args.contRemoveNoPrompt or not args.info \
-            or not args.logs or not args.saveImages or not args.loadImages or not args.imagesList:
+    if not args.contStop and not args.contRemove and not args.contRemoveNoPrompt and not args.info \
+            and not args.logs and not hasattr(args, 'saveImages') and not args.loadImages and not args.imagesList:
         docker_net(docker_client, args.dockNet)
 
-    # Set correct container names and project name if projectSuffix is used
-    if args.projectSuffix:
-        docker_containers['restapi']['containername'] = f'SzGo-API-{args.projectSuffix[0]}'
-        docker_containers['webapp']['containername'] = f'SzGo-WEB-{args.projectSuffix[0]}'
-        docker_containers['swagger']['containername'] = f'SzGo-Swagger-{args.projectSuffix[0]}'
-        senzing_proj_name = args.projectSuffix if isinstance(args.projectSuffix, str) else args.projectSuffix[0]
+    # Set the project name and container names when projectSuffix is used, otherwise uses default from projectSuffix
+    senzing_proj_name = args.projectSuffix if isinstance(args.projectSuffix, str) else args.projectSuffix[0]
+    docker_containers['restapi']['containername'] = f'SzGo-API-{senzing_proj_name}'
+    docker_containers['webapp']['containername'] = f'SzGo-WEB-{senzing_proj_name}'
+    docker_containers['swagger']['containername'] = f'SzGo-Swagger-{senzing_proj_name}'
 
     # Do clean up instead of deployment
     if args.contStop or args.contRemove or args.contRemoveNoPrompt:
@@ -1167,8 +1214,7 @@ def main():
 
     # Always stop and remove any existing containers if not performing a non-deploy option
     # Different args could be used between runs, want them to take effect with a new container instance
-    if not hasattr(args,
-                   'saveImages') and not args.loadImages and not args.info and not args.logs and not args.imagesList:
+    if not hasattr(args, 'saveImages') and not args.loadImages and not args.info and not args.logs and not args.imagesList:
         containers_stop_remove(senzing_proj_name, docker_client, docker_containers, args.contRemove,
                                args.contRemoveNoPrompt, args.dockNet, startup_remove=True)
 
@@ -1179,7 +1225,7 @@ def main():
 
     # Show currently running container details and exit
     if args.info:
-        containers_info(docker_client, docker_containers, senzing_proj_name, host_name)
+        containers_info(docker_client, docker_containers, senzing_proj_name, host_name, rest_api_command)
 
     # Show logs for a container, or set of containers if partial name string is supplied
     if args.logs:
@@ -1203,16 +1249,21 @@ def main():
     versions = parse_versions(DOCKER_LATEST_URL) if access_versions else {}
 
     # Add the current pinned version numbers from DOCKER_LATEST_URL to the dictionary if available, else use latest
-    docker_containers['restapi']['tag'] = versions[
-        docker_containers['restapi']['latestsuffix']] if versions else 'latest'
+    docker_containers['restapi']['tag'] = versions[docker_containers['restapi']['latestsuffix']] if versions else 'latest'
     docker_containers['webapp']['tag'] = versions[docker_containers['webapp']['latestsuffix']] if versions else 'latest'
-    docker_containers['swagger']['tag'] = versions[
-        docker_containers['swagger']['latestsuffix']] if versions else 'latest'
+    docker_containers['swagger']['tag'] = versions[docker_containers['swagger']['latestsuffix']] if versions else 'latest'
+
+    # If tags requested in CLI args override any previously discovered tags
+    if args.apiTag:
+        docker_containers['restapi']['tag'] = args.apiTag
+    if args.webAppTag:
+        docker_containers['webapp']['tag'] = args.webAppTag
+    if args.swaggerTag:
+        docker_containers['swagger']['tag'] = args.swaggerTag               
 
     # Package images to use on another system
     if hasattr(args, 'saveImages'):
-        save_images(docker_client, docker_containers, args.saveImages, args.saveImagesPath, access_dockerhub,
-                    args.noWebApp, args.noSwagger, senzing_proj_name)
+        save_images(docker_client, docker_containers, args.saveImages, args.saveImagesPath, access_dockerhub, args.noWebApp, args.noSwagger)
         sys.exit(0)
 
     # List images found on Senzing github
@@ -1228,12 +1279,9 @@ def main():
         for image in i_list:
             avail_images.append(image.split(':')[0])
 
-    docker_containers['restapi']['imageavailable'] = True if docker_containers['restapi'][
-                                                                 'imagename'] in avail_images else False
-    docker_containers['webapp']['imageavailable'] = True if docker_containers['webapp'][
-                                                                'imagename'] in avail_images else False
-    docker_containers['swagger']['imageavailable'] = True if docker_containers['swagger'][
-                                                                 'imagename'] in avail_images else False
+    docker_containers['restapi']['imageavailable'] = True if docker_containers['restapi']['imagename'] in avail_images else False
+    docker_containers['webapp']['imageavailable'] = True if docker_containers['webapp']['imagename'] in avail_images else False
+    docker_containers['swagger']['imageavailable'] = True if docker_containers['swagger']['imagename'] in avail_images else False
 
     # If can reach Docker Hub always try and pull images, otherwise detect if might be able to continue with installed local assets
     if access_dockerhub:
@@ -1270,14 +1318,6 @@ def main():
                     _, tag = images_to_sort[0].split(':')
 
                     docker_containers[k]['tag'] = tag
-
-    # If tags requested in CLI args override any previously discovered tags
-    if args.apiTag:
-        docker_containers['restapi']['tag'] = args.apiTag
-    if args.webAppTag:
-        docker_containers['webapp']['tag'] = args.webAppTag
-    if args.swaggerTag:
-        docker_containers['swagger']['tag'] = args.swaggerTag
 
     # Fix ini parms for mounting inside container, when db type is sqlite also perform cluster checks and return an additional
     # mount to use to mount the sqlite file(s) into the container.
@@ -1334,15 +1374,7 @@ def main():
     docker_run(docker_client,
                docker_containers,
                # Docker module docs say can pass a list, doesn't work. Entrypoint for image already specifies the jar to launch
-               command=f'--enable-admin {"true" if args.apiAdmin else "false"} \
-                         --allowed-origins * \
-                         --concurrency 10 \
-                         --read-only false \
-                         --verbose true \
-                         --http-port 8250 \
-                         --bind-addr all \
-                         --init-file /etc/opt/senzing/{ini_file_name.name + "_SzGo.json"}' if not args.apiServerCommand else
-               args.apiServerCommand[0],
+               command=rest_api_command,
                container='restapi',
                detach=True,
                # Set hostname for use by the web app env var SENZING_API_SERVER_URL
