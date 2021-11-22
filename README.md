@@ -199,7 +199,7 @@ Once complete, access to each of the services is available at the URL and port d
 
 SenzingGo is designed to be run from within a previously created Senzing project. This facilitates having multiple projects (dev, test, stage or different versions of the Senzing APIs) and distinct containers for the above services serving a single project. A consideration for running multiple projects and instances of the containers started by SenzingGo is specifying different ports than those used by default.
 
-![Multiple Projects](/doc/img/MultiInstance.png)
+![Multiple Projects](/docs/img/MultiInstance.png)
 
 
 ### Options
