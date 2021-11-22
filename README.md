@@ -28,6 +28,7 @@ blah blah ANT
 - Senzing APIs installation
 - Creation of a Senzing project (see above link)
 - Docker
+- Internet access (for initial pull of Docker images)
 - Python Docker module
 
     ```console
@@ -135,3 +136,74 @@ Upon execution the script will:
 2. Check for the latest versions of Docker images utilized
 3. Pull the required Docker images (if not already locally available)
 4. Run the Docker images and instantiate running containers for the previously described assets
+5. Print URL information for each of the services hosted by the Docker containers
+
+```
+-> ./SenzingGo.py 
+
+Performing Docker checks...
+
+Docker network szgo-network doesn't exist, creating...
+
+Looking for existing containers to remove...
+
+Checking for internet access and Senzing resources...
+
+	https://raw.githubusercontent.com/Senzing/knowledge-base/master/lists/docker-versions-latest.sh Available
+	https://hub.docker.com/u/senzing/ Available
+
+
+Checking and pulling Docker images, this may take many minutes...
+
+
+	Pulling senzing/senzing-api-server:2.7.5...
+
+	Pulling senzing/entity-search-web-app:2.3.3...
+
+	Pulling swaggerapi/swagger-ui:v3.52.4...
+
+Running senzing/senzing-api-server:2.7.5...
+
+	Waiting for container to start.
+	Waiting for container to become healthy.......
+
+	Fetching API specification from REST server
+
+Running senzing/entity-search-web-app:2.3.3...
+
+	Waiting for container to start.
+	This container doesn't report health
+	Use the command "docker logs SzGo-WEB-2_8_3-Release" to check status if issues arise 
+
+Running swaggerapi/swagger-ui:v3.52.4...
+
+	Waiting for container to start.
+	This container doesn't report health
+	Use the command "docker logs SzGo-Swagger-2_8_3-Release" to check status if issues arise 
+
+
+Resources
+---------
+
+REST API Server: http://ant76.anthome:8250
+Web App demo:    http://ant76.anthome:8251
+Swagger GUI:     http://ant76.anthome:9180
+
+Help: https://github.com/Senzing/senzinggo
+
+~/senzprojs/2_8_3-Release/python 
+->
+```
+
+Once complete, access to each of the services is available at the URL and port detailed at the end of the output. For example, in the above output the Senzing demo entity search application is accessible from a browser at http://ant76.anthome:8251.
+
+SenzingGo is designed to be run from within a previously created Senzing project. This facilitates having multiple projects (dev, test, stage or different versions of the Senzing APIs) and distinct containers for the above services serving a single project. A consideration for running multiple projects and instances of the containers started by SenzingGo is specifying different ports than those used by default  
+
+### Options
+
+#### Specifying Ports
+
+Each of the three services will use default ports, there are a couple of cases where you may need to specify different numbers:
+
+1. The ports 8250, 8251 or 9180 are already in use on the system
+2. 
