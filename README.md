@@ -13,7 +13,7 @@ SenzingGo is not intended for production use, it does not provide authentication
 
 ### Contents
 
-blah blah ANT
+ANT
 
 ### Legend
 1. :thinking: - A "thinker" icon means that a little extra thinking may be required.
@@ -24,8 +24,8 @@ blah blah ANT
 
 ### Prerequisites
 
-- Supported Linux operating system
-- Senzing APIs installation
+- [Supported Linux operating system](https://senzing.zendesk.com/hc/en-us/articles/115010259947)
+- [Senzing APIs installation](https://senzing.zendesk.com/hc/en-us/articles/115001579954-API-Quickstart-Roadmap)
 - Creation of a Senzing project (see above link)
 - Docker
 - Internet access (for initial pull of Docker images)
