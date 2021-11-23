@@ -201,12 +201,178 @@ SenzingGo is designed to be run from within a previously created Senzing project
 
 ![Multiple Projects](/docs/img/MultiInstance.png)
 
+Upon startup, and if an internet connection is available, SenzingGo will check for the latest version of the Docker images and attempt to pull them for use. Although an internet connection is usually expected by SenzingGo, and is initially required to pull the Docker images it uses, SenzingGo can work in an 'offline' mode. When offline and an internet connection isn't available, SenzingGo will check the locally available Docker images to determine if the images it needs to start are available. This allows SenzingGo to continue to operate without an internet connection.
+
+There is another use case where it is useful for SeningGo to be able to run offline: air gapped systems. In this use case SenzingGo can be used on an internet connected machine to package the required Docker images together. This package can be moved to an air gapped system where SenzingGo can deploy the Docker images for use without needing to pull them directly from the internet. SEE XYZ 
 
 ### Options
 
 #### Specifying Ports
 
-Each of the three services will use default ports, there are a couple of cases where you may need to specify different numbers:
+Each of the three services will use default ports - 8250, 8251 and 9180 - there are a couple of cases where you may need to specify different port numbers:
 
 1. The ports 8250, 8251 or 9180 are already in use on the system
-2. 
+2. There are multiple Senzing API projects on a single system, SenzingGo is to be used with each
+
+In the instance a port is already in use, the following error message (or similar) is displayed and SenzingGo cannot continue.
+
+```
+ERROR: 500 Server Error for http+docker://localhost/v1.41/containers/0e229d2fbf4676a2d8dc5ded8a00dc3c75a7cb44fc189dcf9e43a3aba576a94b/start: Internal Server Error ("driver failed programming external connectivity on endpoint SzGo-API-2_7_0-Release (37b781741cc80ff1bc45c02646272443f91b54171c58890e2814dafb21c444a4): Bind for 0.0.0.0:8250 failed: port is already allocated")
+```
+
+To launch SenzingGo and use different than the default port numbers, specify one or more of:
+
+```
+./SenzingGo.py --apiHostPort 8252 --webAppHostPort 8253 --swaggerHostPort 9181
+```
+
+#### Starting Specific Containers
+
+Running SenzingGo without any parms will start all three of the default containers: Senzing REST API Server, Senzing Entity Search App and the Swagger UI. There may be situations where you don't intend to use all 3 and don't wish to use resources starting them. To choose not to start either the Senzing Entity Search App or the Swagger UI the ```--noWebApp``` and ```--noSwagger``` options can be used. Note: the REST API Server always starts and is the minimum requirement.
+
+Start the Senzing REST API Server and the Senzing Entity Search App:
+
+```./SenzingGo.py --noSwagger```
+
+Start only the Senzing REST API Server:
+
+```./SenzingGo.py --noWebApp --noSwagger```
+
+#### Cleaning up Containers
+
+When you no longer require the use of any of the services provided by the containers, you can stop and/or clean up the containers:
+
+- ```--contStop```
+	- Stop any containers for the currently active Senzing project 
+- ```--contRemove```
+	- Stop any containers for the currently active Senzing project, and remove the containers
+- ```--contRemoveNoPrompt```
+	- Stop any containers for the currently active Senzing project, and remove the containers without prompting
+
+#### Information and Logs
+
+Upon completion of running, SenzingGo displays information relating to the URL and port for each service. If this information is lost sight of from the terminal it can be recalled again by using the ```--info``` option. The info option displays the URL and port information along with other pertinent information for the running containers.
+
+```--> ./SenzingGo.py --info
+
+Performing Docker checks...
+
+
+Looking for containers matching 2_8_3-Release...
+
+Container: SzGo-Swagger-2_8_3-Release
+
+	Image:  swaggerapi/swagger-ui:v3.52.4
+	Status: running
+	URL:    http://ant76.anthome:9180
+
+Container: SzGo-WEB-2_8_3-Release
+
+	Image:  senzing/entity-search-web-app:2.3.3
+	Status: running
+	URL:    http://ant76.anthome:8251
+
+Container: SzGo-API-2_8_3-Release
+
+	Image:  senzing/senzing-api-server:2.7.5
+	Status: running
+	URL:    http://ant76.anthome:8250
+
+
+Command the REST API Server container is starting with:
+
+    --enable-admin false --allowed-origins * --concurrency 10 --read-only false --verbose true --http-port 8250 --bind-addr all --init-file /etc/opt/senzing/G2Module.ini_SzGo.json
+```
+
+The ```--logs``` option is used to display each of the logs for currently running containers started by SenzingGo. This can be useful in helping determine problems with starting the containers and is often used by Senzing support:
+
+```./SenzingGo.py --logs```
+
+#### Packaging and Deploying the Docker Images
+
+In situations where the Senzing APIs are being utilized on systems with no internet connection, and there is a requirement to use SenzingGo, SenzingGo can be used on an internet connected machine to package the required Docker images for deployment on the non-internet connected machine. This is typically useful in environments that have air gapped systems. The sequence of events in such a situation would be:
+
+1. On the internet connected machine ensure the Prerequisites are met 
+	1. :thinking: Installation of the Senzing APIs and creation of a project is not required. SenzingGo can be run standalone when using ```--saveImages``` or ```--loadImages```
+
+
+2. Run SenzingGo with the ```--saveImages``` option
+	2. No arguments are required to ```--saveImages```
+
+```
+--> ./SenzingGo.py --saveImages
+
+WARNING: SENZING_ROOT isn't set please source the project setupEnv file to use all features
+
+WARNING: Without SENZING_ROOT set, only --saveImages (-si) and --loadImages modes are available
+
+Performing Docker checks...
+
+Checking for internet access and Senzing resources...
+
+	https://raw.githubusercontent.com/Senzing/knowledge-base/master/lists/docker-versions-latest.sh Available
+	https://hub.docker.com/u/senzing/ Available
+
+
+Checking and pulling Docker images, this may take many minutes...
+
+
+	Pulling senzing/senzing-api-server:2.7.5...
+
+	Pulling senzing/entity-search-web-app:2.3.3...
+
+	Pulling swaggerapi/swagger-ui:v3.52.4...
+
+Saving senzing/entity-search-web-app:2.3.3 to /tmp/SzGoPackage-senzing-entity-search-web-app-2.3.3.tar...
+
+Saving senzing/senzing-api-server:2.7.5 to /tmp/SzGoPackage-senzing-senzing-api-server-2.7.5.tar...
+
+Saving swaggerapi/swagger-ui:v3.52.4 to /tmp/SzGoPackage-swaggerapi-swagger-ui-v3.52.4.tar...
+
+Compressing saved images to /tmp/SzGoImages_20211122_155051.tgz, this will take several minutes...
+
+Move /tmp/SzGoImages_20211122_155051.tgz to the system to load the images to and run this tool with --loadImages (-li)
+```
+
+3. Move the created package to the non-internet connected machine
+	3. :thinking: If you don't have the Senzing API installation package or SenzingGo.py on the target machine already now would be a good time to move them also 
+
+4. Run SenzingGo with the ```--loadImages``` option, specifying the name of the package, on the non-internet connected machine
+
+```
+--> ./SenzingGo.py --loadImages /tmp/SzGoImages_20211122_155051.tgz
+
+WARNING: SENZING_ROOT isn't set please source the project setupEnv file to use all features
+
+WARNING: Without SENZING_ROOT set, only --saveImages (-si) and --loadImages modes are available
+
+Performing Docker checks...
+
+Extracting Senzing Docker images from /tmp/SzGoImages_20211122_155051.tgz...
+	Loading image file SzGoPackage-senzing-entity-search-web-app-2.3.3.tar
+	Loading image file SzGoPackage-senzing-senzing-api-server-2.7.5.tar
+	Loading image file SzGoPackage-swaggerapi-swagger-ui-v3.52.4.tar
+```
+
+At this point the 3 required Docker images should be available on the local machine. Assuming the Senzing APIs have been installed, a Senzing project created and SenzingGo.py is available, SenzingGo will detect there is no internet connection but the required images are available to use as normal.
+
+:thinking: Anytime one of the Docker images is updated and the update required on the non-internet connected machine the same process can be repeated to update the images.
+
+When saving the images to move a default location will be used (either /tmp or <project_path>/var/), to specify the location to save the package to use the ```--saveImagesPath``` option.
+
+```./SenzingGo.py --saveImages --saveImagesPath /home/ant```
+
+
+#### Starting REST Server in Admin Mode
+
+To enable additional functionality in the Senzing REST API Server and Entity Search App the REST Server needs to be started in admin mode. The additional functionality includes making config changes via the REST Server and loading data from the Entity Search App. To start the REST server in admin mode:
+
+```./SenzingGo.py --apiAdmin```
+
+
+
+
+
+
+
+
