@@ -197,7 +197,7 @@ Help: https://github.com/Senzing/senzinggo
 
 Once complete, access to each of the services is available at the URL and port detailed at the end of the output. For example, in the above output the Senzing demo entity search application is accessible from a browser at http://ant76.anthome:8251.
 
-SenzingGo is designed to be run from within a previously created Senzing project. This facilitates having multiple projects (dev, test, stage or different versions of the Senzing APIs) and distinct containers for the above services serving a single project. A consideration for running multiple projects and instances of the containers started by SenzingGo is specifying different ports than those used by default. See Specifying Ports [Specifying Ports](https://github.com/Senzing/senzinggo/tree/issue-8.ant.1#specifying-ports)
+SenzingGo is designed to be run from within a previously created Senzing project. This facilitates having multiple projects (dev, test, stage or different versions of the Senzing APIs) and distinct containers for the above services serving a single project. A consideration for running multiple projects and instances of the containers started by SenzingGo is specifying different ports than those used by default. See [Specifying Ports](#specifying-ports)
 
 ![Multiple Projects](/docs/img/MultiInstance.png)
 
