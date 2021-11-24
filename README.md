@@ -358,7 +358,7 @@ At this point the 3 required Docker images should be available on the local mach
 
 :thinking: Anytime one of the Docker images is updated and the update required on the non-internet connected machine the same process can be repeated to update the images.
 
-When saving the images to move a default location will be used (either /tmp or <project_path>/var/), to specify the location to save the package to use the ```--saveImagesPath``` option.
+When saving the images, a default location will be used (either /tmp or <project_path>/var/), to specify the location to save the package to use the ```--saveImagesPath``` option.
 
 ```./SenzingGo.py --saveImages --saveImagesPath /home/ant```
 
