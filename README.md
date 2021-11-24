@@ -37,8 +37,7 @@ SenzingGo is not intended for production use, it does not provide authentication
 ### Prerequisites
 
 - [Supported Linux operating system](https://senzing.zendesk.com/hc/en-us/articles/115010259947)
-- [Senzing APIs installation](https://senzing.zendesk.com/hc/en-us/articles/115001579954-API-Quickstart-Roadmap)
-- Creation of a Senzing project (see above link)
+- [Senzing APIs installation and project creation](https://senzing.zendesk.com/hc/en-us/articles/115001579954-API-Quickstart-Roadmap)
 - [Docker](https://docs.docker.com/engine/install/)
 - Internet access (for initial pull of Docker images)
 - Python Docker module
