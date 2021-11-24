@@ -407,7 +407,7 @@ Note the new suffix:
 3030d07b2652    running    SzGo-API-My_Sample_Demo
 ```
 
-When using the ```--projectSuffix``` be aware it is required to be used with other command options. For example, to remove the 3 containers with the ```--contRemoveNoPrompt``` option, the ```--projectSuffix``` option must also be used to specify the suffix:
+When using ```--projectSuffix```, be aware it is required to be used with other command options. For example, to remove the 3 containers with the ```--contRemoveNoPrompt``` option, the ```--projectSuffix``` option must also be used to specify the suffix:
 
 ```
 --> ./SenzingGo.py -rn --projectSuffix My_Sample_Demo
