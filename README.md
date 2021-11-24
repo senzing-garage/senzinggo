@@ -124,7 +124,7 @@ optional arguments:
 
 ### Usage
 
-Although SenzingGo has many arguments, it is executed in it's simplest form with no arguments. 
+Although SenzingGo has many arguments, it is executed in its simplest form with no arguments. 
 
 ```
 ./SenzingGo.py
@@ -136,7 +136,7 @@ Upon execution the script will:
 2. Check for the latest versions of Docker images utilized
 3. Pull the required Docker images (if not already locally available)
 4. Run the Docker images and instantiate running containers for the previously described assets
-5. Print URL information for each of the services hosted by the Docker containers
+5. Print URL information for each of the services provided by the Docker containers
 
 ```
 -> ./SenzingGo.py 
@@ -203,7 +203,7 @@ SenzingGo is designed to be run from within a previously created Senzing project
 
 Upon startup, and if an internet connection is available, SenzingGo will check for the latest version of the Docker images and attempt to pull them for use. Although an internet connection is usually expected by SenzingGo, and is initially required to pull the Docker images it uses, SenzingGo can work in an 'offline' mode. When offline and an internet connection isn't available, SenzingGo will check the locally available Docker images to determine if the images it needs to start are available. This allows SenzingGo to continue to operate without an internet connection.
 
-There is another use case where it is useful for SeningGo to be able to run offline: air gapped systems. In this use case SenzingGo can be used on an internet connected machine to package the required Docker images together. This package can be moved to an air gapped system where SenzingGo can deploy the Docker images for use without needing to pull them directly from the internet. SEE XYZ 
+There is another use case where it is useful for SeningGo to be able to run offline: air gapped systems. In this use case SenzingGo can be used on an internet connected machine to package the required Docker images together. This package can be moved to an air gapped system where SenzingGo can deploy the Docker images for use without needing to pull them directly from the internet, see [Packaging and Deploying the Docker Images](#packaging-and-deploying-the-docker-images)
 
 ### Options
 
