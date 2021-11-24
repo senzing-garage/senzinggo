@@ -27,7 +27,7 @@ ANT
 - [Supported Linux operating system](https://senzing.zendesk.com/hc/en-us/articles/115010259947)
 - [Senzing APIs installation](https://senzing.zendesk.com/hc/en-us/articles/115001579954-API-Quickstart-Roadmap)
 - Creation of a Senzing project (see above link)
-- Docker
+- [Docker](https://docs.docker.com/engine/install/)
 - Internet access (for initial pull of Docker images)
 - Python Docker module
 
@@ -35,7 +35,7 @@ ANT
     pip3 install docker
     ```
 - sudo access or user added to the Linux docker group
-  - SenzingGo executes API calls against Docker and privelges to use it are required
+  - SenzingGo executes API calls against Docker and [privileges](https://docs.docker.com/engine/install/linux-postinstall/) to use it are required
 
 :warning: Recent versions of Red Hat systems use Podman in place of Docker. Podman is not currently supported, see the Docker link above for installation of Docker if you don't rely on Podman.
 
