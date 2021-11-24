@@ -24,6 +24,8 @@ SenzingGo is not intended for production use, it does not provide authentication
 	1. [Information and Logs](#information-and-logs)
 	1. [Packaging and Deploying the Docker Images](#packaging-and-deploying-the-docker-images)
 	1. [Starting REST Server in Admin Mode](#starting-rest-server-in-admin-mode)
+	1. [Change Container Name Suffix](#change-container-name-suffix)
+	1. [Db2 CLI Drivers Path](#db2-cli-drivers-path)
 
 ### Legend
 1. :thinking: - A "thinker" icon means that a little extra thinking may be required.
@@ -431,6 +433,12 @@ Looking for existing containers to remove...
 
 Removing Docker network szgo-network
 ```
+
+#### Db2 CLI Drivers Path
+
+When using Db2 as the Senzing repository you will have already installed the Db2 CLI client and drivers. To mount the drivers into the REST API container for use, SenzingGo must be informed of the location of these drivers on the host system. The path specified for this option should be the location of the Db2 client CLI drivers where the directories such as /cfg and /lib are located, for example /opt/IBM/db2_cli_odbc_driver/odbc_cli/clidriver
+                        
+```./SenzingGo.py --db2CliPath /opt/IBM/db2_cli_odbc_driver/odbc_cli/clidriver```
 
 
 
