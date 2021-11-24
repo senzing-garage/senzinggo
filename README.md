@@ -212,7 +212,7 @@ There is another use case where it is useful for SeningGo to be able to run offl
 Each of the three services will use default ports - 8250, 8251 and 9180 - there are a couple of cases where you may need to specify different port numbers:
 
 1. The ports 8250, 8251 or 9180 are already in use on the system
-2. There are multiple Senzing API projects on a single system, SenzingGo is to be used with each
+2. There are multiple Senzing API projects on a single system and SenzingGo is to be used with each
 
 In the instance a port is already in use, the following error message (or similar) is displayed and SenzingGo cannot continue.
 
@@ -220,7 +220,7 @@ In the instance a port is already in use, the following error message (or simila
 ERROR: 500 Server Error for http+docker://localhost/v1.41/containers/0e229d2fbf4676a2d8dc5ded8a00dc3c75a7cb44fc189dcf9e43a3aba576a94b/start: Internal Server Error ("driver failed programming external connectivity on endpoint SzGo-API-2_7_0-Release (37b781741cc80ff1bc45c02646272443f91b54171c58890e2814dafb21c444a4): Bind for 0.0.0.0:8250 failed: port is already allocated")
 ```
 
-To launch SenzingGo and use different than the default port numbers, specify one or more of:
+To launch SenzingGo and use alternative port numbers, specify one or more of:
 
 ```
 ./SenzingGo.py --apiHostPort 8252 --webAppHostPort 8253 --swaggerHostPort 9181
@@ -251,7 +251,7 @@ When you no longer require the use of any of the services provided by the contai
 
 #### Information and Logs
 
-Upon completion of running, SenzingGo displays information relating to the URL and port for each service. If this information is lost sight of from the terminal it can be recalled again by using the ```--info``` option. The info option displays the URL and port information along with other pertinent information for the running containers.
+Upon completion of execution, SenzingGo displays information relating to the URL and port for each service. If this information is lost sight of from the terminal it can be recalled again by using the ```--info``` option. The info option displays the URL and port information along with other pertinent information for the running containers.
 
 ```--> ./SenzingGo.py --info
 
@@ -284,7 +284,7 @@ Command the REST API Server container is starting with:
     --enable-admin false --allowed-origins * --concurrency 10 --read-only false --verbose true --http-port 8250 --bind-addr all --init-file /etc/opt/senzing/G2Module.ini_SzGo.json
 ```
 
-The ```--logs``` option is used to display each of the logs for currently running containers started by SenzingGo. This can be useful in helping determine problems with starting the containers and is often used by Senzing support:
+The ```--logs``` option is used to display each of the logs for currently running containers started by SenzingGo. This can be useful in helping determine problems with starting the containers and will be of use to Senzing support:
 
 ```./SenzingGo.py --logs```
 
@@ -297,7 +297,7 @@ In situations where the Senzing APIs are being utilized on systems with no inter
 
 
 2. Run SenzingGo with the ```--saveImages``` option
-	2. No arguments are required to ```--saveImages```
+	1. No arguments are required to ```--saveImages```
 
 ```
 --> ./SenzingGo.py --saveImages
