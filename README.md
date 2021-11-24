@@ -13,7 +13,17 @@ SenzingGo is not intended for production use, it does not provide authentication
 
 ### Contents
 
-ANT
+1. [Prerequisites](#prerequisites)
+2. [Installation](#installation)
+3. [Usage Overview](#usage-overview)
+4. [Usage](#usage)
+5. [Options](#options)
+	1. [Specifying Ports](#specifying-ports)
+	1. [Starting Specific Containers](#starting-specific-containers)
+	1. [Cleaning Up Containers](#cleaning-up-containers)
+	1. [Information and Logs](#information-and-logs)
+	1. [Packaging and Deploying the Docker Images](#packaging-and-deploying-the-docker-images)
+	1. [Starting REST Server in Admin Mode](#starting-rest-server-in-admin-mode)
 
 ### Legend
 1. :thinking: - A "thinker" icon means that a little extra thinking may be required.
