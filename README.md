@@ -335,7 +335,7 @@ Move /tmp/SzGoImages_20211122_155051.tgz to the system to load the images to and
 ```
 
 3. Move the created package to the non-internet connected machine
-	3. :thinking: If you don't have the Senzing API installation package or SenzingGo.py on the target machine already now would be a good time to move them also 
+	1. :thinking: If you don't have the Senzing API installation package or SenzingGo.py on the target machine already now would be a good time to move them also 
 
 4. Run SenzingGo with the ```--loadImages``` option, specifying the name of the package, on the non-internet connected machine
 
