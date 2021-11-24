@@ -383,7 +383,7 @@ To enable additional functionality in the Senzing REST API Server and Entity Sea
 
 #### Change Container Name Suffix
 
-By default, SenzingGo will use the name of the project as a siffix when creating the container names to distinguish containers used by other projects. In the following Docker output note the name of each of the containers created by SenzingGo have the suffix '2_8_3-Release', this is the name of the active Senzing project. 
+By default, SenzingGo will use the name of the project as a suffix when creating the container names to distinguish from containers used by other projects. In the following Docker output note the name of each of the containers created by SenzingGo have the suffix '2_8_3-Release', this is the name of the active Senzing project. 
 
 ```
 --> docker ps -a --format "{{.ID}}    {{.State}}    {{.Names}}"
@@ -392,7 +392,7 @@ f24ce403b526    running    SzGo-WEB-2_8_3-Release
 2012006ef60b    running    SzGo-API-2_8_3-Release
 ```
 
-Using the project name helps to identify the containers used by a project. If however you ever wanted to use a different suffix the ```--projectSuffix``` option can be used:
+Using the project name helps to identify the containers used by a project. If however, you wanted to use a different suffix the ```--projectSuffix``` option can be used:
 
 ```
 ./SenzingGo.py --projectSuffix My_Sample_Demo
@@ -407,7 +407,7 @@ Note the new suffix:
 3030d07b2652    running    SzGo-API-My_Sample_Demo
 ```
 
-When using the '''--projectSuffix''' be aware it is required to be used with other command options. For example, to remove the 3 containers with the '''--contRemoveNoPrompt''' option, the '''--projectSuffix''' option must also be used to specify the suffix:
+When using the ```--projectSuffix``` be aware it is required to be used with other command options. For example, to remove the 3 containers with the ```--contRemoveNoPrompt``` option, the ```--projectSuffix``` option must also be used to specify the suffix:
 
 ```
 --> ./SenzingGo.py -rn --projectSuffix My_Sample_Demo
