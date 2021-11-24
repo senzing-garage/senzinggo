@@ -49,6 +49,8 @@ SenzingGo is not intended for production use, it does not provide authentication
 
 :warning: Recent versions of Red Hat systems use Podman in place of Docker. Podman is not currently supported, see the Docker link above for installation of Docker if you don't rely on Podman.
 
+:warning: MS SQL Server is currently not supported as a Senzing repository when using SenzingGo, please contact [support](https://senzing.zendesk.com/hc/en-us/requests/new) if this is a requirement. 
+
 ### Installation
 
 SenzingGo will be included in V3 of the Senzing APIs. In the meantime:
@@ -378,6 +380,58 @@ When saving the images, a default location will be used (either /tmp or <project
 To enable additional functionality in the Senzing REST API Server and Entity Search App the REST Server needs to be started in admin mode. The additional functionality includes making config changes via the REST Server and loading data from the Entity Search App. To start the REST server in admin mode:
 
 ```./SenzingGo.py --apiAdmin```
+
+#### Change Container Name Suffix
+
+By default, SenzingGo will use the name of the project as a siffix when creating the container names to distinguish containers used by other projects. In the following Docker output note the name of each of the containers created by SenzingGo have the suffix '2_8_3-Release', this is the name of the active Senzing project. 
+
+```
+--> docker ps -a --format "{{.ID}}    {{.State}}    {{.Names}}"
+10308ec5b7a6    running    SzGo-Swagger-2_8_3-Release
+f24ce403b526    running    SzGo-WEB-2_8_3-Release
+2012006ef60b    running    SzGo-API-2_8_3-Release
+```
+
+Using the project name helps to identify the containers used by a project. If however you ever wanted to use a different suffix the ```--projectSuffix``` option can be used:
+
+```
+./SenzingGo.py --projectSuffix My_Sample_Demo
+```
+
+Note the new suffix:
+
+```
+--> docker ps -a --format "{{.ID}}    {{.State}}    {{.Names}}"
+9a12e9d225a9    running    SzGo-Swagger-My_Sample_Demo
+60de596a90b4    running    SzGo-WEB-My_Sample_Demo
+3030d07b2652    running    SzGo-API-My_Sample_Demo
+```
+
+When using the '''--projectSuffix''' be aware it is required to be used with other command options. For example, to remove the 3 containers with the '''--contRemoveNoPrompt''' option, the '''--projectSuffix''' option must also be used to specify the suffix:
+
+```
+--> ./SenzingGo.py -rn --projectSuffix My_Sample_Demo
+
+Performing Docker checks...
+
+Looking for existing containers to remove...
+
+	SzGo-Swagger-My_Sample_Demo
+		Stopping...
+		Removing...
+
+	SzGo-WEB-My_Sample_Demo
+		Stopping...
+		Removing...
+
+	SzGo-API-My_Sample_Demo
+		Stopping...
+		Removing...
+
+
+Removing Docker network szgo-network
+```
+
 
 
 
