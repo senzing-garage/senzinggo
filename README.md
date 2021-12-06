@@ -7,7 +7,7 @@ The SenzingGo utility provides rapid deployment of the following Docker containe
 - [Senzing Entity Search App (sample demo application)](https://github.com/Senzing/entity-search-web-app)
 - [Swagger UI](https://swagger.io/tools/swagger-ui/)
 
-SenzingGo is intended to be easy to use and deploy resources quickly to aid in getting started with the Senzing APIs; without requiring Docker skills. Due to its rapid deployment and ease of use, it is targetted at testing, development and education. 
+SenzingGo is intended to be easy to use and deploy resources quickly to aid in getting started with the Senzing APIs; without requiring Docker skills. Due to its rapid deployment and ease of use, it is targeted at testing, development and education. 
 
 SenzingGo is not intended for production use, it does not provide authentication or secure transport of communications. Such topics are outside the intended use and scope of SenzingGo.
 
@@ -216,7 +216,7 @@ SenzingGo is designed to be run from within a previously created Senzing project
 
 Upon startup, and if an internet connection is available, SenzingGo will check for the latest version of the Docker images and attempt to pull them for use. Although an internet connection is usually expected by SenzingGo, and is initially required to pull the Docker images it uses, SenzingGo can work in an 'offline' mode. When offline and an internet connection isn't available, SenzingGo will check the locally available Docker images to determine if the images it needs to start are available. This allows SenzingGo to continue to operate without an internet connection.
 
-There is another use case where it is useful for SeningGo to be able to run offline: air gapped systems. In this use case SenzingGo can be used on an internet connected machine to package the required Docker images together. This package can be moved to an air gapped system where SenzingGo can deploy the Docker images for use without needing to pull them directly from the internet, see [Packaging and Deploying the Docker Images](#packaging-and-deploying-the-docker-images)
+There is another use case where it is useful for SeningGo to be able to run offline: air gaped systems. In this use case SenzingGo can be used on an internet connected machine to package the required Docker images together. This package can be moved to an air gapped system where SenzingGo can deploy the Docker images for use without needing to pull them directly from the internet, see [Packaging and Deploying the Docker Images](#packaging-and-deploying-the-docker-images)
 
 ### Options
 
@@ -378,7 +378,7 @@ When saving the images, a default location will be used (either /tmp or <project
 
 #### Starting REST Server in Admin Mode
 
-To enable additional functionality in the Senzing REST API Server and Entity Search App the REST Server needs to be started in admin mode. The additional functionality includes making config changes via the REST Server and loading data from the Entity Search App. To start the REST server in admin mode:
+To enable additional functionality in the Senzing REST API Server and Entity Search App the REST Server needs to be started in admin mode. The additional functionality includes making configuration changes via the REST Server and loading data from the Entity Search App. To start the REST server in admin mode:
 
 ```./SenzingGo.py --apiAdmin```
 
