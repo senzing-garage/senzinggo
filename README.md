@@ -1,5 +1,17 @@
  SenzingGo
 
+## QuickStart
+
+Follow the [Senzing Quickstart](https://senzing.zendesk.com/hc/en-us/articles/115001579954-API-Quickstart-Roadmap),  from the same shell within the project directory:
+
+```
+python3 -m pip install docker
+wget -o python/SenzingGo.py https://raw.githubusercontent.com/Senzing/senzinggo/main/SenzingGo.py
+chmod +x python/SenzingGo.py
+
+./python/SenzingGo.py
+```
+
 ## Overview
 
 The SenzingGo utility provides rapid deployment of the following Docker containers on a bare metal Linux installation of the Senzing APIs:
@@ -438,12 +450,4 @@ Removing Docker network szgo-network
 When using Db2 as the Senzing repository you will have already installed the Db2 CLI client and drivers. To mount the drivers into the REST API container for use, SenzingGo must be informed of the location of these drivers on the host system. The path specified for this option should be the location of the Db2 client CLI drivers where the directories such as /cfg and /lib are located, for example /opt/IBM/db2_cli_odbc_driver/odbc_cli/clidriver
                         
 ```./SenzingGo.py --db2CliPath /opt/IBM/db2_cli_odbc_driver/odbc_cli/clidriver```
-
-
-
-
-
-
-
-
 
