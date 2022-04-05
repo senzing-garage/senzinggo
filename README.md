@@ -6,7 +6,7 @@ Follow the [Senzing Quickstart](https://senzing.zendesk.com/hc/en-us/articles/11
 
 ```
 python3 -m pip install docker
-wget -o python/SenzingGo.py https://raw.githubusercontent.com/Senzing/senzinggo/main/SenzingGo.py
+wget -O python/SenzingGo.py https://raw.githubusercontent.com/Senzing/senzinggo/main/SenzingGo.py
 chmod +x python/SenzingGo.py
 
 ./python/SenzingGo.py
