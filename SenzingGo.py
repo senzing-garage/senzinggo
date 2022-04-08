@@ -8,6 +8,7 @@ import pathlib
 import pwd
 import re
 import socket
+import stat
 import subprocess
 import sys
 import tarfile
@@ -25,9 +26,9 @@ except ImportError:
     sys.exit(1)
 
 __all__ = []
-__version__ = '1.4.0'  # See https://www.python.org/dev/peps/pep-0396/
+__version__ = '1.5.0'  # See https://www.python.org/dev/peps/pep-0396/
 __date__ = '2021-09-10'
-__updated__ = '2021-11-08'
+__updated__ = '2022-04-07'
 
 
 class Colors:
@@ -71,7 +72,7 @@ def get_host_name():
     if not host_name:
         print(textwrap.dedent(f'''\n\
             {Colors.WARN}WARNING:{Colors.COLEND} Unable to detect a hostname, using localhost, this could cause issues.
-                                  
+
                      If networking issues arise please set a true hostname or try using the --host (-ho) argument
                      to specify host or ip address.
                 '''))
@@ -137,26 +138,37 @@ def internet_access(url, retries=3, retries_start=None, tout=2, check_msg=True):
     return False
 
 
-def get_api_spec(url, retries=3, tout=3):
+def get_api_spec(url, retries=5, tout=5):
     """ Get the REST API specification from the REST server """
 
-    try:
-        api_spec_url = urllib.request.urlopen(url, timeout=tout)
-        api_spec = api_spec_url.read()
-        return api_spec
-    except (urllib.error.URLError, urllib.error.HTTPError) as ex:
-        while retries > 1:
-            print('.', end='', flush=True)
-            retries -= 1
-            sleep(3)
-            get_api_spec(url, retries)
+    retry = retries
 
-        print(textwrap.dedent(f'''\n
-                {Colors.ERROR}ERROR:{Colors.COLEND} Unable to get API specification from Senzing REST server, cannot continue!
-                       {ex}
-                '''))
+    while retry > 0:
 
-        sys.exit(1)
+        try:
+            api_spec_url = urllib.request.urlopen(url, timeout=tout)
+            api_spec = api_spec_url.read()
+            return api_spec
+        except (urllib.error.URLError, urllib.error.HTTPError, ConnectionResetError) as ex:
+            sleep_time = 10 * (retries - retry) if (retries - retry) > 0 else 2
+            print(textwrap.dedent(f'''\n
+                    {Colors.WARN}WARN:{Colors.COLEND} Unable to get API specification from REST server, pausing for {sleep_time}s before retry...
+                          {ex}'''))
+            sleep(sleep_time)
+            retry -= 1
+        except Exception as ex:
+            print(textwrap.dedent(f'''\n
+                    {Colors.ERROR}WARN:{Colors.COLEND} General error communicating with the REST server, cannot continue!
+                          {ex}
+            '''))
+
+            sys.exit(1)
+
+    print(textwrap.dedent(f'''\n
+            {Colors.ERROR}ERROR:{Colors.COLEND} Unable to connect to or fetch API specification from REST server, cannot continue!
+            '''))
+
+    sys.exit(1)
 
 
 def parse_versions(url):
@@ -228,10 +240,6 @@ def docker_checks(script_name):
                 print(f'\n{Colors.ERROR}ERROR:{Colors.COLEND} {check.stderr}')
             sys.exit(1)
 
-    ####if os.geteuid() == 0 and 'SENZING_ROOT' not in os.environ:
-    ####    print(f'SENZING_ROOT isn\'t set please source setupEnv and run with "sudo --preserve-env ./{script_name}"')
-    ####    sys.exit(1)
-
 
 def docker_init():
     """ Initialise a Docker client """
@@ -296,7 +304,7 @@ def docker_pull(docker_client, image):
             print(f'\t{ex}')
             return False
     else:
-        print(f'\t{image} exists, not pulling', flush=True)
+        print(f'\t{image} {Colors.GREEN}Exists, not pulling{Colors.COLEND}', flush=True)
 
     return True
 
@@ -336,6 +344,7 @@ def docker_run(docker_client, docker_containers, **kwargs):
                 return check
 
             if check == 'healthy' and cont_attrs['State']['Health']['Status'] == 'healthy':
+                print()
                 return check
 
             sleep(t_sleep)
@@ -477,13 +486,13 @@ def containers_info(docker_client, docker_containers, senzing_proj_name, host_na
     """
 
     def show_api_command(rest_api_command):
-        ''' Show API Server command for reference '''
+        """ Show API Server command for reference """
 
         print(textwrap.dedent(f'''\n
             Command the REST API Server container is starting with:
-        
+
                 {' '.join([c for c in rest_api_command.split('  ') if c])}
-              
+
         '''))
 
         sys.exit(0)
@@ -813,25 +822,25 @@ def mysql_check(senzing_root, lib_my_sql, db_type, senzing_support):
 
     if not lib_mysql_path.is_file():
         print(textwrap.dedent(f'''\n\
-                                  {Colors.WARN}WARNING:{Colors.COLEND} To use MySQL with this tool {lib_my_sql} is required to be in {senzing_root}/lib/ 
-                                           This allows the API server to use it inside the container. Senzing cannot distribute 
+                                  {Colors.WARN}WARNING:{Colors.COLEND} To use MySQL with this tool {lib_my_sql} is required to be in {senzing_root}/lib/
+                                           This allows the API server to use it inside the container. Senzing cannot distribute
                                            this file, to use Senzing with MySQL this must be user installed.
-                                            
-                                           {lib_my_sql} may already be installed in this machine if you have installed the MySQL 
-                                           client. You can check with: 
-                                            
-                                               sudo find / -name "libmysqlclient*" 
-                                               
+
+                                           {lib_my_sql} may already be installed in this machine if you have installed the MySQL
+                                           client. You can check with:
+
+                                               sudo find / -name "libmysqlclient*"
+
                                            If located, copy {lib_my_sql} to {senzing_root}/lib/, for example:
-                                           
+
                                                cp /lib/x86_64-linux-gnu/libmysqlclient.so.21 {senzing_root}/lib/libmysqlclient.so.21
-                                               
+
                                            If {lib_my_sql} wasn't found install the MySQL client libraries appropriate for your distribution and create
                                            the copy as above. For example, on Debian based systems:
-                                           
+
                                                sudo apt install libmysqlclient21
-                                               
-                                           {senzing_support} 
+
+                                           {senzing_support}
         '''))
         sys.exit(1)
 
@@ -847,17 +856,17 @@ def db2_check(args, senzing_support):
     except TypeError:
         print(textwrap.dedent(f'''\n\
             {Colors.WARN}WARNING:{Colors.COLEND} When the database type is Db2 use the --db2CliPath (-db2c) argument to specify the
-                     location on this machine of the Db2 client CLI drivers. This allows the API server 
+                     location on this machine of the Db2 client CLI drivers. This allows the API server
                      to use them inside the container. Senzing cannot distribute this installation, to
-                     use Senzing with Db2 this must be user installed. 
-                     
+                     use Senzing with Db2 this must be user installed.
+
                      This path should be the location of the Db2 client CLI drivers where the directories
                      such as /cfg and /lib are located, for example:
-                     
+
                         /opt/IBM/db2_cli_odbc_driver/odbc_cli/clidriver
-                        
+
                      https://www.ibm.com/docs/en/db2/11.5?topic=clients-data-server-drivers
-                     
+
                      {senzing_support}
         '''))
 
@@ -868,12 +877,12 @@ def db2_check(args, senzing_support):
 
     if not db2_cli_path_lib.is_dir():
         print(textwrap.dedent(f'''\n\
-            {Colors.ERROR}ERROR:{Colors.COLEND} {str(db2_cli_path)} doesn't appear to contain the expected directories such as /cfg 
+            {Colors.ERROR}ERROR:{Colors.COLEND} {str(db2_cli_path)} doesn't appear to contain the expected directories such as /cfg
                    and /lib
-                   
-                   Is {str(db2_cli_path)} the path that contains the Db2 client CLI drivers and  
+
+                   Is {str(db2_cli_path)} the path that contains the Db2 client CLI drivers and
                    directories such as /cfg and /lib?
-                   
+
                    {senzing_support}
         '''))
 
@@ -882,7 +891,7 @@ def db2_check(args, senzing_support):
     if not db2_cli_cfg_file.is_file():
         print(textwrap.dedent(f'''\n\
             {Colors.ERROR}ERROR:{Colors.COLEND} {str(db2_cli_cfg_file)} doesn't appear to exist and is required.
-                                  
+
                    {senzing_support}
         '''))
 
@@ -906,11 +915,11 @@ def package_msg():
     """ Message for packaging """
 
     print(textwrap.dedent(f'''\n\
-        {Colors.BLUE}INFO:{Colors.COLEND} This tool can be used on another system with internet access and Docker to package up the required Docker 
-              images. This package can subsequently be used on this (or other machines) to make the required Docker images 
+        {Colors.BLUE}INFO:{Colors.COLEND} This tool can be used on another system with internet access and Docker to package up the required Docker
+              images. This package can subsequently be used on this (or other machines) to make the required Docker images
               available for use.
-              
-              See --help" and the --saveImages (-si) and --loadImages (-li) arguments.        
+
+              See --help" and the --saveImages (-si) and --loadImages (-li) arguments.
         '''))
 
 
@@ -967,7 +976,7 @@ def main():
         host_name = get_host_name()
 
     SENZING_SUPPORT = 'For further assistance contact support@senzing.com'
-    SZGO_HELP ='https://github.com/Senzing/senzinggo'
+    SZGO_HELP = 'https://github.com/Senzing/senzinggo'
 
     # Dict of the containers required and details to use, names match project path/name to allow >1 project and containers
     docker_containers = \
@@ -1012,9 +1021,9 @@ def main():
     # Don't allow argparse to create abbreviations of options - allow_abbrev
     szgo_parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter,
                                           allow_abbrev=False,
-                                          description = textwrap.dedent(f'''
+                                          description=textwrap.dedent(f'''
                                             Utility to rapidly deploy Docker containers for REST API server, Entity Search App and Swagger UI
-                                            
+
                                             Additional information: {SZGO_HELP}
                                             '''))
 
@@ -1042,77 +1051,77 @@ def main():
                              nargs=1, metavar='PORT',
                              help=textwrap.dedent('''\
                                 Port number of Swagger UI, default=%(default)s
-                                
+
                                 '''))
 
     szgo_parser.add_argument('-nwa', '--noWebApp', default=False, action='store_true',
                              help=textwrap.dedent('''\
                                 Don\'t deploy the Search Web App demo
-                                
+
                                 '''))
 
     szgo_parser.add_argument('-nsw', '--noSwagger', default=False, action='store_true',
                              help=textwrap.dedent('''\
                                 Don\'t deploy the Swagger UI
-                                
+
                                 '''))
 
     stop_group = szgo_parser.add_mutually_exclusive_group()
     stop_group.add_argument('-s', '--contStop', default=False, action='store_true',
                             help=textwrap.dedent(f'''\
                                 Stop any Docker containers named *{senzing_proj_name}
-                                
+
                                 '''))
 
     stop_group.add_argument('-r', '--contRemove', default=False, action='store_true',
                             help=textwrap.dedent(f'''\
                                 Stop and remove any Docker containers named *{senzing_proj_name}
-                                
+
                                 '''))
 
     stop_group.add_argument('-rn', '--contRemoveNoPrompt', default=False, action='store_true',
                             help=textwrap.dedent(f'''\
                                 Stop and remove any Docker containers named *{senzing_proj_name} without prompting
-                                
+
                                 '''))
 
     szgo_parser.add_argument('-i', '--info', default=False, action='store_true',
                              help=textwrap.dedent('''\
                                 Display info for running containers for this project
-                                
+
                                 '''))
 
     szgo_parser.add_argument('-l', '--logs', type=str, const='SzGo', nargs='?', metavar='STRING',
                              help=textwrap.dedent('''\
                                 Display logs for running container(s), use partial string to match multiple containers, default=%(const)s
-                                
+
                                 '''))
 
     # Use Suppress to not have in namespace unless specified
     szgo_parser.add_argument('-si', '--saveImages', default=argparse.SUPPRESS, nargs='*', metavar='IMAGE',
                              help=textwrap.dedent(f'''\
                                 Save {SCRIPT_STEM} Docker images for loading on another machine, e.g. air gapped systems
-                                
+
                                 Unless instructed by Senzing support no arguments are required.
-                                
+
                                 '''))
 
     szgo_parser.add_argument('-sip', '--saveImagesPath', default=SENZING_VAR_PATH, nargs=1, metavar='PATH',
                              help=textwrap.dedent('''\
                                 Path for saving a Docker images package to, default=%(default)s
-                                
+
                                 '''))
 
     szgo_parser.add_argument('-li', '--loadImages', type=str, nargs=1, metavar='FILE',
                              help=textwrap.dedent(f'''\
                                 File to load {SCRIPT_STEM} Docker images from to this machine, e.g. air gapped systems
-                                
+
                                 '''))
 
     szgo_parser.add_argument('-aa', '--apiAdmin', default=False, action='store_true',
                              help=textwrap.dedent('''\
                                 Enable admin mode on the API Server
-                                
+
                                 '''))
 
     szgo_parser.add_argument('-n', '--dockNet', type=str, default='szgo-network', nargs='?', metavar='NAME',
@@ -1136,12 +1145,16 @@ def main():
     szgo_parser.add_argument('-db2c', '--db2CliPath', default=None, nargs=1,
                              help=textwrap.dedent('''\
                                 Path to Db2 client CLI driver when using a Db2 database as the Senzing repository
-                                
+
                                 '''))
 
     # Undocumented args - advanced usage with guidance from Senzing support
     szgo_parser.add_argument('-il', '--imagesList', default=False, action='store_true', help=argparse.SUPPRESS)
+    # It's easier to use -ij to get the JSON for the ini parms and set it as an env var and use --init-env-var for api server for custom command
+    #       export SENZING_INIT_JSON=$(./SenzingGo.py -ij)
+    #       ./SenzingGo.py -ac '--allowed-origins * --concurrency 10 --read-only false -verbose true --debug --http-port 8250 --bind-addr all --init-env-var SENZING_INIT_JSON'
     szgo_parser.add_argument('-ac', '--apiServerCommand', type=str, default=None, help=argparse.SUPPRESS, nargs=1)
+    szgo_parser.add_argument('-ad', '--apiServerDebug', default=False, action='store_true', help=argparse.SUPPRESS)
     szgo_parser.add_argument('-at', '--apiTag', type=str, default=None, help=argparse.SUPPRESS, nargs='?')
     szgo_parser.add_argument('-wt', '--webAppTag', type=str, default=None, help=argparse.SUPPRESS, nargs='?')
     szgo_parser.add_argument('-st', '--swaggerTag', type=str, default=None, help=argparse.SUPPRESS, nargs='?')
@@ -1175,20 +1188,21 @@ def main():
         # Convert INI to JSON, useful for using own REST API command
         if args.iniToJson or args.iniToJsonPretty:
             if args.iniToJson:
-                print(ini_json)
+                print(json.dumps(ini_json))
             if args.iniToJsonPretty:
                 print(json.dumps(ini_json, indent=4))
             sys.exit(0)
 
         # Build the command for the REST API Server, build early to use in other functions
-        rest_api_command=f'--enable-admin {"true" if args.apiAdmin else "false"} \
-                           --allowed-origins * \
-                           --concurrency 10 \
-                           --read-only false \
-                           --verbose true \
-                           --http-port 8250 \
-                           --bind-addr all \
-                           --init-file /etc/opt/senzing/{ini_file_name.name + "_SzGo.json"}' \
+        rest_api_command = f'--enable-admin {"true" if args.apiAdmin else "false"} \
+                             --allowed-origins * \
+                             --concurrency 10 \
+                             --read-only false \
+                             --verbose true \
+                             --debug {"true" if args.apiServerDebug else "false"}\
+                             --http-port 8250 \
+                             --bind-addr all \
+                             --init-file /etc/opt/senzing/{ini_file_name.name + "_SzGo.json"}' \
             if not args.apiServerCommand else args.apiServerCommand[0]
 
     # Check Docker Docker is installed, sudo access?
@@ -1259,7 +1273,7 @@ def main():
     if args.webAppTag:
         docker_containers['webapp']['tag'] = args.webAppTag
     if args.swaggerTag:
-        docker_containers['swagger']['tag'] = args.swaggerTag               
+        docker_containers['swagger']['tag'] = args.swaggerTag
 
     # Package images to use on another system
     if hasattr(args, 'saveImages'):
@@ -1332,7 +1346,7 @@ def main():
         db2_check(args, SENZING_SUPPORT)
 
     if db_type == 'mssql':
-        print('\nERROR: MSSQL databases are not supported currently')
+        print(f'\n{Colors.ERROR}ERROR:{Colors.COLEND} MSSQL databases are not supported currently')
         sys.exit(1)
 
     # Write INI parms to file, could use init-json string but less secure
@@ -1343,14 +1357,27 @@ def main():
 
     # If running with sudo - for Docker - chown the file to the user after sudo creates it. This prevents permissions
     # errors if a user starts with sudo then no longer needs sudo to run docker, e.g. was added to docker group
-    # Try to change to same uid and gid, if fails ignore gid
-    if os.geteuid == 0:
+    if os.geteuid() == 0:
         try:
-            uid = os.getlogin()
-            os.chown(ini_json_file, uid, uid)
-        except Exception:
-            with suppress(Exception):
-                os.chown(ini_json_file, uid, -1)
+            uid = pwd.getpwnam(os.getlogin()).pw_uid
+            gid = pwd.getpwnam(os.getlogin()).pw_gid
+            os.chown(ini_json_file, uid, gid)
+        except Exception as ex:
+            print(textwrap.dedent(f'''\n\
+                {Colors.ERROR}ERROR:{Colors.COLEND} Cannot change ownership on {ini_json_file}
+                        {ex}
+                '''))
+            sys.exit(1)
+
+    # Change permissions for user read and write
+    try:
+        os.chmod(ini_json_file, stat.S_IRUSR | stat.S_IWUSR)
+    except OSError as ex:
+        print(textwrap.dedent(f'''\n\
+            {Colors.ERROR}ERROR:{Colors.COLEND} Cannot set permissions on {ini_json_file}
+                    {ex}
+                '''))
+        sys.exit(1)
 
     # REST Server - this is the minimum container to start, can be started without others
     api_host_port = args.apiHostPort[0] if isinstance(args.apiHostPort, list) else args.apiHostPort
@@ -1386,14 +1413,18 @@ def main():
                ports={docker_containers['restapi']['containerport']: api_host_port},
                remove=False,
                tty=True,
-               # Get the ID of the user using USER, this ensures the correct uid if starting as sudo --preserve-env
+               # Get the ID of the user, this ensures the correct uid if starting as sudo --preserve-env
                # The container uses this uid for files such as G2C.db and write operations
-               user=f'{pwd.getpwnam(os.getenv("USER")).pw_uid}',
-               volumes=api_volumes
+               user=f'{pwd.getpwnam(os.getlogin()).pw_uid}',
+               volumes=api_volumes,
+               # See undocumented arg --apiServerCommand
+               environment=[
+                    f'SENZING_INIT_JSON={os.getenv("SENZING_INIT_JSON", "")}'
+               ]
                )
 
     # Try and get the API specification for Swagger, acts as test if it's up correctly too
-    print('\n\n\tFetching API specification from REST server', end='')
+    print('\n\tFetching API specification from REST server', end='')
     api_spec = get_api_spec(f'http://{host_name}:{api_host_port}/{SZGO_REST_SPEC}')
     print()
 
@@ -1475,7 +1506,7 @@ def main():
         Web App demo:    {entity_search_url}
         Swagger GUI:     {swagger_url}
         
-        Help: {SZGO_HELP}
+        {Colors.GREEN}Help:{Colors.COLEND} {SZGO_HELP}
             '''))
 
 
