@@ -951,12 +951,6 @@ def main():
     SENZING_VAR_PATH = pathlib.Path('/tmp')
     senzing_proj_name = host_name = ''
 
-    # URLs for required assets
-    DOCKER_LATEST_URL = 'https://raw.githubusercontent.com/Senzing/knowledge-base/master/lists/docker-versions-latest.sh'
-    DOCKERHUB_URL = 'https://hub.docker.com/u/senzing/'
-    DOCKER_IMAGE_NAMES = 'https://raw.githubusercontent.com/Senzing/knowledge-base/master/lists/docker-image-names.json'
-    # SENZING_AIR_GAP_INSTALL = 'https://senzing.zendesk.com/hc/en-us/articles/360039787373-Install-Air-Gapped-Systems'
-
     # Check setup env has been run and determine project name from path
     SENZING_ROOT = get_senzing_root(SCRIPT_NAME)
 
@@ -967,6 +961,15 @@ def main():
         SENZING_VAR_PATH = SENZING_ROOT_PATH / 'var'
         senzing_proj_name = get_senzing_proj_name(SENZING_ROOT_PATH.name)
 
+        # What major version of Senzing is the project? Required for Senzing V2 -> V3 differences.
+        with open(SENZING_ROOT_PATH / 'g2BuildVersion.json') as vj:
+            version_json = json.load(vj)
+
+        major_version = int(version_json['BUILD_VERSION'][0])
+        if major_version not in (2, 3):
+            print(f'\n{Colors.ERROR}ERROR:{Colors.COLEND} Major version number should be 2 or 3, it is {major_version}!\n')
+            sys.exit(1)
+
         SZGO_REST_JSON = 'SzGo-rest-api.json'
         SZGO_REST_SPEC = 'specifications/open-api'
 
@@ -974,6 +977,14 @@ def main():
 
         # Attempt to get hostname / IP of machine where running
         host_name = get_host_name()
+
+    # URLs for required assets
+    # Modify URL depending on major version level
+    DOCKER_LATEST_BASE_URL = 'https://raw.githubusercontent.com/Senzing/knowledge-base/main/lists/docker-versions-'
+    DOCKER_LATEST_URL = DOCKER_LATEST_BASE_URL + 'latest.sh' if major_version == 2 else DOCKER_LATEST_BASE_URL + 'v3.sh'
+    DOCKERHUB_URL = 'https://hub.docker.com/u/senzing/'
+    DOCKER_IMAGE_NAMES = 'https://raw.githubusercontent.com/Senzing/knowledge-base/master/lists/docker-image-names.json'
+    # SENZING_AIR_GAP_INSTALL = 'https://senzing.zendesk.com/hc/en-us/articles/360039787373-Install-Air-Gapped-Systems'
 
     SENZING_SUPPORT = 'For further assistance contact support@senzing.com'
     SZGO_HELP = 'https://github.com/Senzing/senzinggo'
@@ -1204,6 +1215,9 @@ def main():
                              --bind-addr all \
                              --init-file /etc/opt/senzing/{ini_file_name.name + "_SzGo.json"}' \
             if not args.apiServerCommand else args.apiServerCommand[0]
+
+        # Change in the entrypoint for the API Server between Senzing V2 -> V3, need to account for
+        rest_api_command = 'java -jar senzing-api-server.jar ' + rest_api_command if major_version == 3 else rest_api_command
 
     # Check Docker Docker is installed, sudo access?
     docker_checks(SCRIPT_NAME)
