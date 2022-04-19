@@ -262,7 +262,6 @@ def docker_image_exists(docker_client, image_name):
     return True if docker_client.images.list(name=image_name) else False
 
 
-####def pull_default_images(docker_client, docker_containers, no_web_app, no_swagger):
 def pull_default_images(docker_client, docker_containers, no_web_app, no_swagger, force_pull):
     """ Docker pull the base set of images required for the tool
         Senzing Rest API server, Senzing Entity Search App, Swagger UI
@@ -281,7 +280,6 @@ def pull_default_images(docker_client, docker_containers, no_web_app, no_swagger
 
         image_with_version = image_list['imagename'] + ':' + image_list['tag']
 
-        ####did_pull = docker_pull(docker_client, image_with_version)
         did_pull = docker_pull(docker_client, image_with_version, force_pull)
         if not did_pull and key == 'restapi':
             print(
@@ -293,13 +291,12 @@ def pull_default_images(docker_client, docker_containers, no_web_app, no_swagger
         docker_containers[key]['imageavailable'] = True
 
 
-####def docker_pull(docker_client, image):
 def docker_pull(docker_client, image, force_pull):
     """ Pull Docker images """
 
     def pull_image(image_to_pull, is_forced=False):
 
-        print(f'\n\tPulling {"(forced) " if is_forced else ""}{image}...', flush=True)
+        print(f'\n\tPulling {"(forced) " if is_forced else ""}{image_to_pull}...', flush=True)
 
         try:
             docker_client.images.pull(image)
@@ -312,14 +309,6 @@ def docker_pull(docker_client, image, force_pull):
         return pull_image(image, True)
 
     if not docker_image_exists(docker_client, image):
-    ##    print(f'\n\tPulling {image}...', flush=True)
-    ##
-    ##    try:
-    ##        docker_client.images.pull(image)
-    ##        return 'PULLED'
-    ##    except (docker.errors.ImageNotFound, docker.errors.NotFound) as ex:
-    ##        print(f'\t{ex}')
-    ##        return False
         return pull_image(image)
     else:
         print(f'\t{image} {Colors.GREEN}Exists, not pulling{Colors.COLEND}', flush=True)
@@ -979,7 +968,6 @@ def main():
         SENZING_VAR_PATH = SENZING_ROOT_PATH / 'var'
         senzing_proj_name = get_senzing_proj_name(SENZING_ROOT_PATH.name)
 
-        ####
         # What major version of Senzing is the project?
         with open(SENZING_ROOT_PATH / 'g2BuildVersion.json') as vj:
             version_json = json.load(vj)
@@ -997,8 +985,7 @@ def main():
         host_name = get_host_name()
 
     # URLs for required assets
-    ####DOCKER_LATEST_URL = '32'
-    # Modify depedning on major version level
+    # Modify depending on major version level
     DOCKER_LATEST_BASE_URL = 'https://raw.githubusercontent.com/Senzing/knowledge-base/main/lists/docker-versions-'
     DOCKER_LATEST_URL = DOCKER_LATEST_BASE_URL + 'latest.sh' if major_version == 2 else DOCKER_LATEST_BASE_URL + 'v3.sh'
     DOCKERHUB_URL = 'https://hub.docker.com/u/senzing/'
@@ -1190,7 +1177,6 @@ def main():
     szgo_parser.add_argument('-st', '--swaggerTag', type=str, default=None, help=argparse.SUPPRESS, nargs='?')
     szgo_parser.add_argument('-ij', '--iniToJson', default=False, action='store_true', help=argparse.SUPPRESS)
     szgo_parser.add_argument('-ijp', '--iniToJsonPretty', default=False, action='store_true', help=argparse.SUPPRESS)
-    ####
     # Used to force a pull even when the image tag exists locally already, e.g., did someone not update the tag!
     szgo_parser.add_argument('-fp', '--forcePull', default=False, action='store_true', help=argparse.SUPPRESS)
 
@@ -1238,7 +1224,6 @@ def main():
                              --init-file /etc/opt/senzing/{ini_file_name.name + "_SzGo.json"}' \
             if not args.apiServerCommand else args.apiServerCommand[0]
 
-        ####
         # Change in the entrypoint for the API Server between Senzing V2 -> V3, need to account for
         rest_api_command = 'java -jar senzing-api-server.jar ' + rest_api_command if major_version == 3 else rest_api_command
 
@@ -1336,7 +1321,6 @@ def main():
 
     # If can reach Docker Hub always try and pull images, otherwise detect if might be able to continue with installed local assets
     if access_dockerhub:
-        ####pull_default_images(docker_client, docker_containers, args.noWebApp, args.noSwagger)
         pull_default_images(docker_client, docker_containers, args.noWebApp, args.noSwagger, args.forcePull)
     else:
         print(textwrap.dedent(f'''\n\
