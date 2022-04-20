@@ -262,7 +262,7 @@ def docker_image_exists(docker_client, image_name):
     return True if docker_client.images.list(name=image_name) else False
 
 
-def pull_default_images(docker_client, docker_containers, no_web_app, no_swagger):
+def pull_default_images(docker_client, docker_containers, no_web_app, no_swagger, force_pull):
     """ Docker pull the base set of images required for the tool
         Senzing Rest API server, Senzing Entity Search App, Swagger UI
     """
@@ -280,7 +280,7 @@ def pull_default_images(docker_client, docker_containers, no_web_app, no_swagger
 
         image_with_version = image_list['imagename'] + ':' + image_list['tag']
 
-        did_pull = docker_pull(docker_client, image_with_version)
+        did_pull = docker_pull(docker_client, image_with_version, force_pull)
         if not did_pull and key == 'restapi':
             print(
                 f'\n{Colors.ERROR}ERROR:{Colors.COLEND} Couldn\'t pull REST API Server image, can\'t continue without it!')
@@ -291,11 +291,12 @@ def pull_default_images(docker_client, docker_containers, no_web_app, no_swagger
         docker_containers[key]['imageavailable'] = True
 
 
-def docker_pull(docker_client, image):
+def docker_pull(docker_client, image, force_pull):
     """ Pull Docker images """
 
-    if not docker_image_exists(docker_client, image):
-        print(f'\n\tPulling {image}...', flush=True)
+    def pull_image(image_to_pull, is_forced=False):
+
+        print(f'\n\tPulling {"(forced) " if is_forced else ""}{image_to_pull}...', flush=True)
 
         try:
             docker_client.images.pull(image)
@@ -303,6 +304,12 @@ def docker_pull(docker_client, image):
         except (docker.errors.ImageNotFound, docker.errors.NotFound) as ex:
             print(f'\t{ex}')
             return False
+
+    if force_pull:
+        return pull_image(image, True)
+
+    if not docker_image_exists(docker_client, image):
+        return pull_image(image)
     else:
         print(f'\t{image} {Colors.GREEN}Exists, not pulling{Colors.COLEND}', flush=True)
 
@@ -961,10 +968,9 @@ def main():
         SENZING_VAR_PATH = SENZING_ROOT_PATH / 'var'
         senzing_proj_name = get_senzing_proj_name(SENZING_ROOT_PATH.name)
 
-        # What major version of Senzing is the project? Required for Senzing V2 -> V3 differences.
+        # What major version of Senzing is the project?
         with open(SENZING_ROOT_PATH / 'g2BuildVersion.json') as vj:
             version_json = json.load(vj)
-
         major_version = int(version_json['BUILD_VERSION'][0])
         if major_version not in (2, 3):
             print(f'\n{Colors.ERROR}ERROR:{Colors.COLEND} Major version number should be 2 or 3, it is {major_version}!\n')
@@ -979,7 +985,7 @@ def main():
         host_name = get_host_name()
 
     # URLs for required assets
-    # Modify URL depending on major version level
+    # Modify depending on major version level
     DOCKER_LATEST_BASE_URL = 'https://raw.githubusercontent.com/Senzing/knowledge-base/main/lists/docker-versions-'
     DOCKER_LATEST_URL = DOCKER_LATEST_BASE_URL + 'latest.sh' if major_version == 2 else DOCKER_LATEST_BASE_URL + 'v3.sh'
     DOCKERHUB_URL = 'https://hub.docker.com/u/senzing/'
@@ -1171,6 +1177,8 @@ def main():
     szgo_parser.add_argument('-st', '--swaggerTag', type=str, default=None, help=argparse.SUPPRESS, nargs='?')
     szgo_parser.add_argument('-ij', '--iniToJson', default=False, action='store_true', help=argparse.SUPPRESS)
     szgo_parser.add_argument('-ijp', '--iniToJsonPretty', default=False, action='store_true', help=argparse.SUPPRESS)
+    # Used to force a pull even when the image tag exists locally already, e.g., did someone not update the tag!
+    szgo_parser.add_argument('-fp', '--forcePull', default=False, action='store_true', help=argparse.SUPPRESS)
 
     args = szgo_parser.parse_args()
 
@@ -1313,7 +1321,7 @@ def main():
 
     # If can reach Docker Hub always try and pull images, otherwise detect if might be able to continue with installed local assets
     if access_dockerhub:
-        pull_default_images(docker_client, docker_containers, args.noWebApp, args.noSwagger)
+        pull_default_images(docker_client, docker_containers, args.noWebApp, args.noSwagger, args.forcePull)
     else:
         print(textwrap.dedent(f'''\n\
             {Colors.WARN}WARNING:{Colors.COLEND} Cannot reach Senzing resources on the net, checking for available images...
