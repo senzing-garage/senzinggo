@@ -26,9 +26,9 @@ except ImportError:
     sys.exit(1)
 
 __all__ = []
-__version__ = '1.5.0'  # See https://www.python.org/dev/peps/pep-0396/
+__version__ = '1.5.1'  # See https://www.python.org/dev/peps/pep-0396/
 __date__ = '2021-09-10'
-__updated__ = '2022-04-07'
+__updated__ = '2022-05-12'
 
 
 class Colors:
@@ -59,7 +59,7 @@ def get_senzing_root(script_name):
 
 
 def get_host_name():
-    """ Attempt to get fully qualified hostname or IP"""
+    """ Attempt to get fully qualified hostname or IP """
 
     # FQDN
     host_name = socket.getfqdn(socket.gethostbyname(socket.gethostname()))
@@ -968,14 +968,6 @@ def main():
         SENZING_VAR_PATH = SENZING_ROOT_PATH / 'var'
         senzing_proj_name = get_senzing_proj_name(SENZING_ROOT_PATH.name)
 
-        # What major version of Senzing is the project?
-        with open(SENZING_ROOT_PATH / 'g2BuildVersion.json') as vj:
-            version_json = json.load(vj)
-        major_version = int(version_json['BUILD_VERSION'][0])
-        if major_version not in (2, 3):
-            print(f'\n{Colors.ERROR}ERROR:{Colors.COLEND} Major version number should be 2 or 3, it is {major_version}!\n')
-            sys.exit(1)
-
         SZGO_REST_JSON = 'SzGo-rest-api.json'
         SZGO_REST_SPEC = 'specifications/open-api'
 
@@ -985,9 +977,8 @@ def main():
         host_name = get_host_name()
 
     # URLs for required assets
-    # Modify depending on major version level
-    DOCKER_LATEST_BASE_URL = 'https://raw.githubusercontent.com/Senzing/knowledge-base/main/lists/docker-versions-'
-    DOCKER_LATEST_URL = DOCKER_LATEST_BASE_URL + 'latest.sh' if major_version == 2 else DOCKER_LATEST_BASE_URL + 'v3.sh'
+    DOCKER_LATEST_URL = 'https://raw.githubusercontent.com/Senzing/knowledge-base/main/lists/docker-versions-latest.sh'
+    DOCKER_STABLE_URL = 'https://raw.githubusercontent.com/Senzing/knowledge-base/main/lists/docker-versions-stable.sh'
     DOCKERHUB_URL = 'https://hub.docker.com/u/senzing/'
     DOCKER_IMAGE_NAMES = 'https://raw.githubusercontent.com/Senzing/knowledge-base/master/lists/docker-image-names.json'
     # SENZING_AIR_GAP_INSTALL = 'https://senzing.zendesk.com/hc/en-us/articles/360039787373-Install-Air-Gapped-Systems'
@@ -1179,6 +1170,11 @@ def main():
     szgo_parser.add_argument('-ijp', '--iniToJsonPretty', default=False, action='store_true', help=argparse.SUPPRESS)
     # Used to force a pull even when the image tag exists locally already, e.g., did someone not update the tag!
     szgo_parser.add_argument('-fp', '--forcePull', default=False, action='store_true', help=argparse.SUPPRESS)
+    # If there are issues with the "latest" Docker images use the stable list instead
+    szgo_parser.add_argument('-sd', '--stableDocker', default=False, action='store_true', help=argparse.SUPPRESS)
+    # Temporary work around during transition from API Server V2 -> V3 to account for differences in Dockerfile CMD / args
+    # This can be removed when stable Docker images move over to API Server V3, will only work with Senzing V2 projects
+    szgo_parser.add_argument('-av2', '--apiV2', default=False, action='store_true', help=argparse.SUPPRESS)
 
     args = szgo_parser.parse_args()
 
@@ -1213,7 +1209,8 @@ def main():
             sys.exit(0)
 
         # Build the command for the REST API Server, build early to use in other functions
-        rest_api_command = f'--enable-admin {"true" if args.apiAdmin else "false"} \
+        rest_api_command = f'java -jar senzing-api-server.jar \
+                             --enable-admin {"true" if args.apiAdmin else "false"} \
                              --allowed-origins * \
                              --concurrency 10 \
                              --read-only false \
@@ -1224,8 +1221,10 @@ def main():
                              --init-file /etc/opt/senzing/{ini_file_name.name + "_SzGo.json"}' \
             if not args.apiServerCommand else args.apiServerCommand[0]
 
-        # Change in the entrypoint for the API Server between Senzing V2 -> V3, need to account for
-        rest_api_command = 'java -jar senzing-api-server.jar ' + rest_api_command if major_version == 3 else rest_api_command
+        # If still using the V2 API Server don't send the java command, will only work with Senzing V2 projects
+        # This can be removed when stable Docker images move over to API Server V3
+        if args.apiV2:
+            rest_api_command = rest_api_command.replace('java -jar senzing-api-server.jar', '').strip()
 
     # Check Docker Docker is installed, sudo access?
     docker_checks(SCRIPT_NAME)
@@ -1273,18 +1272,21 @@ def main():
             f'\n{Colors.WARN}WARNING:{Colors.COLEND} Use with caution, unmatched image versions may cause incompatibilities and errors!\n')
         sleep(5)
 
+    # If the use of the stable Docker list is requested use it
+    docker_versions_url = DOCKER_STABLE_URL if args.stableDocker else DOCKER_LATEST_URL
+
     # Check can reach net and access destinations of required resources?
     print('Checking for internet access and Senzing resources...', flush=True)
-    access_versions = internet_access(DOCKER_LATEST_URL)
+    access_versions = internet_access(docker_versions_url)
     access_dockerhub = internet_access(DOCKERHUB_URL)
     if args.imagesList:
         access_imagesList = internet_access(DOCKER_IMAGE_NAMES)
     print('\n')
 
     # Try and fetch the latest docker image versions
-    versions = parse_versions(DOCKER_LATEST_URL) if access_versions else {}
+    versions = parse_versions(docker_versions_url) if access_versions else {}
 
-    # Add the current pinned version numbers from DOCKER_LATEST_URL to the dictionary if available, else use latest
+    # Add the current pinned version numbers from docker_versions_url to the dictionary if available, else use latest
     docker_containers['restapi']['tag'] = versions[docker_containers['restapi']['latestsuffix']] if versions else 'latest'
     docker_containers['webapp']['tag'] = versions[docker_containers['webapp']['latestsuffix']] if versions else 'latest'
     docker_containers['swagger']['tag'] = versions[docker_containers['swagger']['latestsuffix']] if versions else 'latest'
@@ -1381,8 +1383,8 @@ def main():
     # errors if a user starts with sudo then no longer needs sudo to run docker, e.g. was added to docker group
     if os.geteuid() == 0:
         try:
-            uid = pwd.getpwnam(os.getlogin()).pw_uid
-            gid = pwd.getpwnam(os.getlogin()).pw_gid
+            uid = pwd.getpwnam(os.getenv("SUDO_USER")).pw_uid
+            gid = pwd.getpwnam(os.getenv("SUDO_USER")).pw_gid
             os.chown(ini_json_file, uid, gid)
         except Exception as ex:
             print(textwrap.dedent(f'''\n\
@@ -1437,7 +1439,7 @@ def main():
                tty=True,
                # Get the ID of the user, this ensures the correct uid if starting as sudo --preserve-env
                # The container uses this uid for files such as G2C.db and write operations
-               user=f'{pwd.getpwnam(os.getlogin()).pw_uid}',
+               user=f'{pwd.getpwnam(os.getenv("SUDO_USER")).pw_uid if os.getenv("SUDO_USER", None) else pwd.getpwnam(os.getenv("USER")).pw_uid}',
                volumes=api_volumes,
                # See undocumented arg --apiServerCommand
                environment=[
