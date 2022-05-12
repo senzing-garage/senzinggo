@@ -2,6 +2,8 @@
 
 ## QuickStart
 
+**Note:** As of Senzing V3, SenzingGo is included in the product installation and doesn't need to be downloaded as outlined below.
+
 Follow the [Senzing Quickstart](https://senzing.zendesk.com/hc/en-us/articles/115001579954-API-Quickstart-Roadmap),  from the same shell within the project directory:
 
 ```
