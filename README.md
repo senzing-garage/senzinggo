@@ -176,7 +176,7 @@ Looking for existing containers to remove...
 
 Checking for internet access and Senzing resources...
 
-	https://raw.githubusercontent.com/Senzing/knowledge-base/master/lists/docker-versions-latest.sh Available
+	https://raw.githubusercontent.com/Senzing/knowledge-base/main/lists/docker-versions-latest.sh Available
 	https://hub.docker.com/u/senzing/ Available
 
 
@@ -337,7 +337,7 @@ Performing Docker checks...
 
 Checking for internet access and Senzing resources...
 
-	https://raw.githubusercontent.com/Senzing/knowledge-base/master/lists/docker-versions-latest.sh Available
+	https://raw.githubusercontent.com/Senzing/knowledge-base/main/lists/docker-versions-latest.sh Available
 	https://hub.docker.com/u/senzing/ Available
 
 
