@@ -3,7 +3,6 @@
 import argparse
 import configparser
 import json
-import math
 import os
 import pathlib
 import pwd
@@ -216,7 +215,7 @@ def get_api_spec(url, retries=5, tout=5):
             sleep(sleep_time)
             retry -= 1
         except Exception as ex:
-            print(textwrap.dedent(f'''\n  
+            print(textwrap.dedent(f'''\n
                     {Colors.ERROR}ERROR:{Colors.COLEND} General error communicating with the REST server, cannot continue!
                           {ex}
             '''))
