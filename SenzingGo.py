@@ -16,6 +16,7 @@ import textwrap
 import urllib
 from contextlib import suppress
 from datetime import datetime
+from math import ceil
 from pathlib import Path
 from time import sleep
 
@@ -26,19 +27,26 @@ except ImportError:
     sys.exit(1)
 
 __all__ = []
-__version__ = '1.5.1'  # See https://www.python.org/dev/peps/pep-0396/
+__version__ = '1.5.2'  # See https://www.python.org/dev/peps/pep-0396/
 __date__ = '2021-09-10'
-__updated__ = '2022-05-12'
+__updated__ = '2022-07-20'
 
 
 class Colors:
     HEAD = '\033[95m'
     BLUE = '\033[94m'
     GREEN = '\033[92m'
+    INFO = '\033[94m'
     WARN = '\033[93m'
     ERROR = '\033[91m'
     BOLD = '\033[1m'
     COLEND = '\033[0m'
+
+
+# f-strings expressions don't allow backslash, use for formatting in f-strings
+class Format:
+    NEWLINE = '\n'
+    CURSOR_UP = '\033[F'
 
 
 def get_senzing_root(script_name):
@@ -58,28 +66,78 @@ def get_senzing_root(script_name):
     return senz_root
 
 
-def get_host_name():
-    """ Attempt to get fully qualified hostname or IP """
+def get_host_name(tout=2):
+    """ Attempt to get fully qualified hostname """
+
+    host_name = None
+
+    # Test if on AWS and fetch AWS external hostname
+    # https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/instancedata-data-retrieval.html
+    # There is also the ec2-metadata tool that can report the instance data
+    host_end_point = 'http://169.254.169.254/latest/meta-data/public-hostname'
+
+    with suppress(Exception):
+        host_url = urllib.request.urlopen(host_end_point, timeout=tout)
+        public_host = host_url.read()
+        return public_host.decode(), True
 
     # FQDN
-    host_name = socket.getfqdn(socket.gethostbyname(socket.gethostname()))
+    with suppress(Exception):
+        host_name = socket.getfqdn(socket.gethostbyname(socket.gethostname()))
 
     # Hostname
     if not host_name:
-        host_name = socket.gethostbyname(socket.gethostname())
+        with suppress(Exception):
+            host_name = socket.gethostbyname(socket.gethostname())
 
     # Otherwise set to localhost, can be overridden with the -ho CLI arg
     if not host_name:
         print(textwrap.dedent(f'''\n\
             {Colors.WARN}WARNING:{Colors.COLEND} Unable to detect a hostname, using localhost, this could cause issues.
 
-                     If networking issues arise please set a true hostname or try using the --host (-ho) argument
+                     If networking issues arise please set a hostname or try using the --host (-ho) argument
                      to specify host or ip address.
                 '''))
         host_name = 'localhost'
-        sleep(3)
 
-    return host_name
+    return host_name, False
+
+
+def get_ip_addr(host_name, tout=2):
+    """ Attempt to get IP address """
+
+    ipv4 = None
+
+    # Test if on AWS and fetch AWS external IPV4
+    # https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/instancedata-data-retrieval.html
+    # There is also the ec2-metadata tool that can report the instance data
+    ipv4_end_point = 'http://169.254.169.254/latest/meta-data/public-ipv4'
+
+    with suppress(Exception):
+        ipv4_url = urllib.request.urlopen(ipv4_end_point, timeout=tout)
+        public_ipv4 = ipv4_url.read()
+        return public_ipv4.decode()
+
+    # Try easy method
+    with suppress(Exception):
+        ipv4 = socket.gethostbyname(host_name)
+
+    # Try external method
+    if not ipv4:
+        with suppress(Exception):
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.connect(("8.8.8.8", 80))
+            ipv4 = sock.getsockname()[0]
+
+    if not ipv4:
+        print(textwrap.dedent(f'''\n\
+            {Colors.WARN}WARNING:{Colors.COLEND} Unable to detect an IP address, using 127.0.0.1, this could cause issues.
+
+                     If networking issues arise please check if a valid IP address is assigned.
+                '''))
+        ipv4 = '127.0.0.1'
+
+    return ipv4
 
 
 def ini_localhost_check(ini_file_name):
@@ -150,15 +208,15 @@ def get_api_spec(url, retries=5, tout=5):
             api_spec = api_spec_url.read()
             return api_spec
         except (urllib.error.URLError, urllib.error.HTTPError, ConnectionResetError) as ex:
-            sleep_time = 10 * (retries - retry) if (retries - retry) > 0 else 2
+            sleep_time = 5 * (retries - retry) if retry < ceil(retries/retry) else 5
             print(textwrap.dedent(f'''\n
-                    {Colors.WARN}WARN:{Colors.COLEND} Unable to get API specification from REST server, pausing for {sleep_time}s before retry...
-                          {ex}'''))
+                             {Colors.INFO}INFO:{Colors.COLEND} Waiting for API specification from REST server, pausing for {sleep_time}s before retry...                          
+                                       {ex}'''))
             sleep(sleep_time)
             retry -= 1
         except Exception as ex:
             print(textwrap.dedent(f'''\n
-                    {Colors.ERROR}WARN:{Colors.COLEND} General error communicating with the REST server, cannot continue!
+                    {Colors.ERROR}ERROR:{Colors.COLEND} General error communicating with the REST server, cannot continue!
                           {ex}
             '''))
 
@@ -303,6 +361,7 @@ def docker_pull(docker_client, image, force_pull):
             return 'PULLED'
         except (docker.errors.ImageNotFound, docker.errors.NotFound) as ex:
             print(f'\t{ex}')
+            print(f'\n\t{Colors.INFO}INFO:{Colors.COLEND} If above error is image cannot be found check free storage, lack of storage can throw such an error.')
             return False
 
     if force_pull:
@@ -335,7 +394,7 @@ def docker_cont_list(docker_client, all_conts=True, cont_filters={}):
     return docker_client.containers.list(all=all_conts, filters=cont_filters)
 
 
-def docker_run(docker_client, docker_containers, **kwargs):
+def docker_run(docker_client, docker_containers, skip_health, **kwargs):
     """ Create and run a container """
 
     def status_wait(msg, check, cont_name, loop_cnt=20, t_sleep=5):
@@ -385,29 +444,22 @@ def docker_run(docker_client, docker_containers, **kwargs):
         print(f'\n{Colors.ERROR}ERROR:{Colors.COLEND} {ex}')
         sys.exit(1)
 
-    if status_wait(f'Waiting for container to start.',
-                   'running',
-                   kwargs['name']
-                   ) == 'exited':
-        print(
-            f'\n\t{Colors.ERROR}ERROR:{Colors.COLEND} Container did not start successfully, status: {docker_client.containers.get(kwargs["name"]).status}')
-        docker_logs(docker_client.containers.get(kwargs['name']))
-        sys.exit(1)
-
-    # Container might not have HEALTHCHECK set in Docker file, if it does wait for it to become healthy
-    if docker_client.containers.get(kwargs['name']).attrs.get('State').get('Health', None):
-        if status_wait('Waiting for container to become healthy.',
-                       'healthy',
-                       kwargs['name']
-                       ) != 'healthy':
-            print(
-                f'\n\t{Colors.WARN}WARNING:{Colors.COLEND} Container isn\'t healthy yet or failed, monitor with the command "docker logs {kwargs["name"]}"')
+    if not skip_health:
+        if status_wait(f'Waiting for container to start...', 'running', kwargs['name']) == 'exited':
+            print(f'\n\t{Colors.ERROR}ERROR:{Colors.COLEND} Container did not start successfully, status: {docker_client.containers.get(kwargs["name"]).status}')
             docker_logs(docker_client.containers.get(kwargs['name']))
-    else:
-        print('\n\tThis container doesn\'t report health')
-        print(f'\tUse the command "docker logs {kwargs["name"]}" to check status if issues arise ')
+            sys.exit(1)
 
-    docker_containers[container_key]['startedok'] = True
+        # Container might not have HEALTHCHECK set in Docker file, if it does wait for it to become healthy
+        if docker_client.containers.get(kwargs['name']).attrs.get('State').get('Health', None):
+            if status_wait('Waiting for container to become healthy.', 'healthy', kwargs['name']) != 'healthy':
+                print(f'\n\t{Colors.WARN}WARNING:{Colors.COLEND} Container isn\'t healthy yet or failed, monitor with the command "docker logs {kwargs["name"]}"')
+                docker_logs(docker_client.containers.get(kwargs['name']))
+        else:
+            print('\n\tThis container doesn\'t report health')
+            print(f'\tUse the command "docker logs {kwargs["name"]}" to check status if issues arise ')
+
+        docker_containers[container_key]['startedok'] = True
 
 
 def containers_stop_remove(senzing_proj_name,
@@ -544,8 +596,7 @@ def container_logs(docker_client, logs_string=None):
     """ Get logs for one or more containers """
 
     # Using filter there could be more than one container returned
-    matching_containers = docker_cont_list(docker_client,
-                                           cont_filters={"name": logs_string if logs_string else 'SzGo'})
+    matching_containers = docker_cont_list(docker_client, cont_filters={"name": logs_string if logs_string else 'SzGo'})
 
     if matching_containers:
         for cont in matching_containers:
@@ -600,7 +651,7 @@ def get_timestamp():
     return datetime.now().strftime("%Y%m%d_%H%M%S")
 
 
-def save_images(docker_client, docker_containers, save_images, save_images_path, access_dockerhub, no_web_app, no_swagger):
+def save_images(docker_client, docker_containers, save_images, save_images_path, access_dockerhub, no_web_app, no_swagger, force_pull):
     """ Package up base set or custom set of images to transfer and use on another system """
 
     avail_images_with_tag = []
@@ -620,7 +671,7 @@ def save_images(docker_client, docker_containers, save_images, save_images_path,
         # If don't have internet access check if each image exists, if it doesn't error as can't complete the request
         for image in save_images:
             if access_dockerhub:
-                docker_pull(docker_client, image)
+                docker_pull(docker_client, image, force_pull)
 
             try:
                 docker_client.images.get(image)
@@ -635,7 +686,7 @@ def save_images(docker_client, docker_containers, save_images, save_images_path,
     else:
         images_newest_dict = {}
         if access_dockerhub:
-            pull_default_images(docker_client, docker_containers, no_web_app, no_swagger)
+            pull_default_images(docker_client, docker_containers, no_web_app, no_swagger, force_pull)
 
         # Get a list of all images, only get the first tag entry [0] if there are > 1 tags
         images = [i.tags[0] for i in docker_client.images.list()]
@@ -973,14 +1024,11 @@ def main():
 
         LIB_MY_SQL = 'libmysqlclient.so.21'
 
-        # Attempt to get hostname / IP of machine where running
-        host_name = get_host_name()
-
     # URLs for required assets
     DOCKER_LATEST_URL = 'https://raw.githubusercontent.com/Senzing/knowledge-base/main/lists/docker-versions-latest.sh'
     DOCKER_STABLE_URL = 'https://raw.githubusercontent.com/Senzing/knowledge-base/main/lists/docker-versions-stable.sh'
     DOCKERHUB_URL = 'https://hub.docker.com/u/senzing/'
-    DOCKER_IMAGE_NAMES = 'https://raw.githubusercontent.com/Senzing/knowledge-base/main/lists/docker-image-names.json'
+    DOCKER_IMAGE_NAMES = 'https://raw.githubusercontent.com/Senzing/knowledge-base/master/lists/docker-image-names.json'
     # SENZING_AIR_GAP_INSTALL = 'https://senzing.zendesk.com/hc/en-us/articles/360039787373-Install-Air-Gapped-Systems'
 
     SENZING_SUPPORT = 'For further assistance contact support@senzing.com'
@@ -1138,9 +1186,9 @@ def main():
 
                                 '''))
 
-    szgo_parser.add_argument('-ho', '--host', type=str, default=host_name, nargs='?',
+    szgo_parser.add_argument('-ho', '--host', type=str, default=None, nargs='?',
                              help=textwrap.dedent('''\
-                                Hostname or IP address, only use if tool can\'t determine correctly, default=%(default)s
+                                Hostname, only use if tool can\'t determine correctly
 
                                 '''))
 
@@ -1170,6 +1218,8 @@ def main():
     szgo_parser.add_argument('-ijp', '--iniToJsonPretty', default=False, action='store_true', help=argparse.SUPPRESS)
     # Used to force a pull even when the image tag exists locally already, e.g., did someone not update the tag!
     szgo_parser.add_argument('-fp', '--forcePull', default=False, action='store_true', help=argparse.SUPPRESS)
+    # Don't wait for containers to become healthy or display status as starting
+    szgo_parser.add_argument('-sh', '--skipHealth', default=False, action='store_true', help=argparse.SUPPRESS)
     # If there are issues with the "latest" Docker images use the stable list instead
     szgo_parser.add_argument('-sd', '--stableDocker', default=False, action='store_true', help=argparse.SUPPRESS)
     # Temporary work around during transition from API Server V2 -> V3 to account for differences in Dockerfile CMD / args
@@ -1177,8 +1227,6 @@ def main():
     szgo_parser.add_argument('-av2', '--apiV2', default=False, action='store_true', help=argparse.SUPPRESS)
 
     args = szgo_parser.parse_args()
-
-    host_name = args.host
 
     # Warning message printed by get_senzing_root(), if SENZING_ROOT isn't set only allow
     # save / load images mode (and non-documented images list)
@@ -1225,6 +1273,17 @@ def main():
         # This can be removed when stable Docker images move over to API Server V3
         if args.apiV2:
             rest_api_command = rest_api_command.replace('java -jar senzing-api-server.jar', '').strip()
+
+    # Attempt to get hostname and IP address, sleep if localhost and msg displayed within function(s)
+    print(f'\nCollecting networking information...')
+    host_name, is_cloud = get_host_name()
+    # Override hostname if specified
+    if args.host:
+        host_name = args.host
+    ip_addr = get_ip_addr(host_name)
+
+    if host_name == 'localhost' or ip_addr == '127.0.0.1':
+        sleep(3)
 
     # Check Docker Docker is installed, sudo access?
     docker_checks(SCRIPT_NAME)
@@ -1301,7 +1360,7 @@ def main():
 
     # Package images to use on another system
     if hasattr(args, 'saveImages'):
-        save_images(docker_client, docker_containers, args.saveImages, args.saveImagesPath, access_dockerhub, args.noWebApp, args.noSwagger)
+        save_images(docker_client, docker_containers, args.saveImages, args.saveImagesPath, access_dockerhub, args.noWebApp, args.noSwagger, args.forcePull)
         sys.exit(0)
 
     # List images found on Senzing github
@@ -1424,6 +1483,7 @@ def main():
 
     docker_run(docker_client,
                docker_containers,
+               args.skipHealth,
                # Docker module docs say can pass a list, doesn't work. Entrypoint for image already specifies the jar to launch
                command=rest_api_command,
                container='restapi',
@@ -1464,6 +1524,7 @@ def main():
 
         docker_run(docker_client,
                    docker_containers,
+                   args.skipHealth,
                    container='webapp',
                    detach=True,
                    # Use Docker name of the container as the hostname - as per "docker inspect szgo-network"
@@ -1479,7 +1540,7 @@ def main():
                    network=args.dockNet,
                    ports={docker_containers['webapp']['containerport']: web_app_host_port},
                    remove=False,
-                   tty=True,
+                   tty=True
                    )
     else:
         if not args.noWebApp:
@@ -1494,6 +1555,7 @@ def main():
 
         docker_run(docker_client,
                    docker_containers,
+                   args.skipHealth,
                    container='swagger',
                    detach=True,
                    environment=[f'SWAGGER_JSON=/var/tmp/{SZGO_REST_JSON}'],
@@ -1503,8 +1565,7 @@ def main():
                    ports={docker_containers['swagger']['containerport']: swagger_host_port},
                    remove=False,
                    tty=True,
-                   volumes={
-                       f'{SENZING_VAR_PATH}/{SZGO_REST_JSON}': {'bind': f'/var/tmp/{SZGO_REST_JSON}', 'mode': 'ro'}}
+                   volumes={f'{SENZING_VAR_PATH}/{SZGO_REST_JSON}': {'bind': f'/var/tmp/{SZGO_REST_JSON}', 'mode': 'ro'}}
                    )
 
     else:
@@ -1517,19 +1578,37 @@ def main():
         package_msg()
 
     api_server_url = f'http://{host_name}:{api_host_port}'
-    entity_search_url = f'http://{host_name}:{web_app_host_port}' if not args.noWebApp and docker_containers['webapp'][
-        'startedok'] else '--noWebApp (-nwa) used or an error occurred'
-    swagger_url = f'http://{host_name}:{swagger_host_port}' if not args.noSwagger and docker_containers['swagger'][
-        'startedok'] else '--noSwagger (-nsw) used or an error occurred'
+    api_server_ip = f'http://{ip_addr}:{api_host_port}'
+
+    if not args.noWebApp and (docker_containers['webapp']['startedok'] or args.skipHealth):
+        entity_search_url = f'http://{host_name}:{web_app_host_port}'
+        entity_search_ip = f'http://{ip_addr}:{web_app_host_port}'
+    else:
+        entity_search_url = '--noWebApp (-nwa) used or an error occurred'
+        entity_search_ip = Format.CURSOR_UP
+
+    if not args.noSwagger and (docker_containers['swagger']['startedok'] or args.skipHealth):
+        swagger_url = f'http://{host_name}:{swagger_host_port}'
+        swagger_ip = f'http://{ip_addr}:{swagger_host_port}'
+    else:
+        swagger_url = '--noSwagger (-nsw) used or an error occurred'
+        swagger_ip = Format.CURSOR_UP
 
     print(textwrap.dedent(f'''\n\n\
         {Colors.BLUE}{Colors.BOLD}Resources
         ---------{Colors.COLEND}
         
+        {Colors.INFO + 'INFO:' + Colors.COLEND + ' Skip health check was specified, resources may not be immediately available.' + Format.NEWLINE if args.skipHealth else Format.CURSOR_UP}
         REST API Server: {api_server_url}
+                         {api_server_ip}
+                         
         Web App demo:    {entity_search_url}
+                         {entity_search_ip}
+                         
         Swagger GUI:     {swagger_url}
-        
+                         {swagger_ip}
+                         
+        {Colors.INFO + 'INFO:' + Colors.COLEND + ' Appear to be running on a cloud system, ensure access to resources and ports are open!'  + Format.NEWLINE if is_cloud else Format.CURSOR_UP}
         {Colors.GREEN}Help:{Colors.COLEND} {SZGO_HELP}
             '''))
 
