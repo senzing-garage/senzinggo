@@ -209,14 +209,14 @@ def get_api_spec(url, retries=5, tout=5):
             api_spec = api_spec_url.read()
             return api_spec
         except (urllib.error.URLError, urllib.error.HTTPError, ConnectionResetError) as ex:
-            sleep_time = 5 * (retries - retry) if retry < math.ceil(retries/retry) else 5
+            sleep_time = 5 * (retries - retry) if retry < ceil(retries/retry) else 5
             print(textwrap.dedent(f'''\n
                              {Colors.INFO}INFO:{Colors.COLEND} Waiting for API specification from REST server, pausing for {sleep_time}s before retry...                          
                                        {ex}'''))
             sleep(sleep_time)
             retry -= 1
         except Exception as ex:
-            print(textwrap.dedent(f'''\n            
+            print(textwrap.dedent(f'''\n  
                     {Colors.ERROR}ERROR:{Colors.COLEND} General error communicating with the REST server, cannot continue!
                           {ex}
             '''))
