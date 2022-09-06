@@ -413,7 +413,7 @@ def pull_default_images(docker_client, docker_containers, no_web_app, no_swagger
             try:
                 result, key = future.result()
             except docker.errors.DockerException as ex:
-                logger(ex, cat=LogCats.ERROR, task_color=docker_containers[key]['msgcolor'], task=pull_success[0])
+                logger(ex, cat=LogCats.ERROR, task_color=docker_containers[dock_run_args[0]['container']]['msgcolor'], task=pull_success[0])
                 if pull_success[0] == 'REST API Server':
                     logger('Couldn\'t pull REST API Server image, can\'t continue without it!', LogCats.ERROR)
                     sys.exit(1)
@@ -428,7 +428,7 @@ def pull_default_images(docker_client, docker_containers, no_web_app, no_swagger
             try:
                 _ = future.result()
             except docker.errors.DockerException as ex:
-                logger(ex, cat=LogCats.ERROR, task_color=docker_containers[key]['msgcolor'], task=pull_success[0])
+                logger(ex, cat=LogCats.ERROR, task_color=docker_containers[dock_run_args[0]['container']]['msgcolor'], task=pull_success[0])
                 sys.exit(1)
 
 
@@ -613,7 +613,7 @@ def containers_stop_remove(senzing_proj_name,
     with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
         future_rem = {executor.submit(container_remove, cont): cont for cont in containers}
         concurrent.futures.wait(future_rem)
-    
+
     # Remove the network too
     if containers_remove:
         network_list = docker_client.networks.list(names=docker_network)
@@ -787,7 +787,7 @@ def save_images(docker_client, docker_containers, images, save_images_path, acce
                 try:
                     _, key = future.result()
                 except Exception as ex:
-                    logger(f'Image {image} failed to pull!', LogCats.ERROR)
+                    logger('Image failed to pull!', LogCats.ERROR)
                     logger(ex, LogCats.ERROR)
                     sys.exit(1)
                 else:
