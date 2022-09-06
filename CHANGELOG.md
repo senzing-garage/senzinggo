@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 [markdownlint](https://dlaa.me/markdownlint/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2022-09-10
+
+### Changed in 1.6.0
+
+- Substantial performance improvements
+- Checks if a new version is available
+- Can self update if newer version is available
+- New output formatting
+- New flag to be stricter on checking health of containers, to use if issues arise (--waitHealth)
+- New arg to specify the Docker URL (--dockUrl)
+
 ## [1.5.2] - 2022-07-20
 
 ### Changed in 1.5.2

@@ -1,6 +1,9 @@
 #! /usr/bin/env python3
 
+# TODO Add self updater
+
 import argparse
+import concurrent.futures
 import configparser
 import json
 import os
@@ -13,6 +16,7 @@ import subprocess
 import sys
 import tarfile
 import textwrap
+import time
 import urllib
 from contextlib import suppress
 from datetime import datetime
@@ -23,30 +27,115 @@ from time import sleep
 try:
     import docker
 except ImportError:
-    print('\nPlease install the Python Docker module (pip3 install docker)\n')
+    print('\nPlease install the Python Docker module (pip3 install docker)')
+    print('\nAdditional information: https://github.com/Senzing/senzinggo\n')
     sys.exit(1)
 
 __all__ = []
-__version__ = '1.5.2'  # See https://www.python.org/dev/peps/pep-0396/
+__version__ = '1.6.0'  # See https://www.python.org/dev/peps/pep-0396/
 __date__ = '2021-09-10'
-__updated__ = '2022-07-20'
+__updated__ = '2022-09-06'
 
 
 class Colors:
-    HEAD = '\033[95m'
-    BLUE = '\033[94m'
-    GREEN = '\033[92m'
-    INFO = '\033[94m'
-    WARN = '\033[93m'
-    ERROR = '\033[91m'
+    # Standard colors
+    RED = '\033[31m'
+    GREEN = '\033[32m'
+    YELLOW = '\033[33m'
+    BLUE = '\033[34m'
+    MAGENTA = '\033[35m'
+    CYAN = '\033[36m'
+    WHITE = '\033[37m'
+
+    # Custom colors
+    DARK_ORANGE = '\033[38;5;208m'
+
+    # Other
+    INFO = '\033[34m'
+    WARN = '\033[38;5;208m'
+    ERROR = '\033[31m'
     BOLD = '\033[1m'
-    COLEND = '\033[0m'
+    END = '\033[0m'
+    DEFAULT = '\033[37m'
+    DIM = '\033[02m'
+
+
+class LogCats:
+    INFO = f'{Colors.INFO}INFO{Colors.END}'
+    WARNING = f'{Colors.WARN}WARNING{Colors.END}'
+    ERROR = f'{Colors.ERROR}ERROR{Colors.END}'
 
 
 # f-strings expressions don't allow backslash, use for formatting in f-strings
 class Format:
     NEWLINE = '\n'
     CURSOR_UP = '\033[F'
+
+
+def update_check_and_get():
+    """ Check version numbers """
+
+    with urllib.request.urlopen("https://api.github.com/repos/senzing/SenzingGo/releases/latest") as rel_response:
+        rel_ver = json.loads(rel_response.read())['name']
+
+    # Senzing follows release versions of x.y.z
+    # Do they look as we expect?
+    try:
+        _ = int(__version__.replace('.', ''))
+        _ = int(rel_ver.replace('.', ''))
+        test_this = __version__.replace('.', '')
+        test_rel = rel_ver.replace('.', '')
+    except ValueError:
+        logger(f'Either the version of this script {__version__} or the released version {rel_ver} don\'t contain all digits', LogCats.ERROR)
+        logger('Cannot check if a new update is available or perform an update', LogCats.ERROR)
+        return None, None
+    else:
+        if len(test_this) < 3 or len(test_rel) < 3:
+            logger(f'Either the version of this script {__version__} or the released version {rel_ver} are not formatted as expected', LogCats.ERROR)
+            logger('Cannot check if a new update is available or perform an update', LogCats.ERROR)
+            return None, None
+
+    this_ver_concat = int(test_this)
+    rel_ver_concat = int(test_rel)
+
+    return this_ver_concat, rel_ver_concat
+
+
+def update_check():
+    """ Check if update is available """
+
+    logger('Checking for an update...')
+
+    this_ver, rel_ver = update_check_and_get()
+    if not this_ver and not rel_ver:
+        return
+
+    if this_ver < rel_ver:
+        return True
+
+    return False
+
+
+def update(senz_root):
+    """ Perform an update """
+
+    _, rel_ver = update_check_and_get()
+    if not rel_ver:
+        return
+
+    new_go_file = f'{senz_root}/python/SenzingGo.py_{rel_ver}'
+
+    with urllib.request.urlopen("https://raw.githubusercontent.com/Senzing/senzinggo/main/SenzingGo.py") as rel_response:
+        new_go = rel_response.read()
+        with open(new_go_file, 'wb') as go:
+            go.write(new_go)
+
+    try:
+        os.chmod(new_go_file, stat.S_IRUSR | stat.S_IWUSR | stat.S_IEXEC | stat.S_IRGRP | stat.S_IWGRP | stat.S_IXGRP)
+    except OSError as ex:
+        raise ex
+    else:
+        logger(f'Updated version downloaded, replace SenzingGo.py with {new_go_file} and re-launch to use new version', msg_color=Colors.BLUE)
 
 
 def get_senzing_root(script_name):
@@ -56,12 +145,11 @@ def get_senzing_root(script_name):
 
     if not senz_root:
         if os.geteuid() == 0:
-            print(
-                f'\n{Colors.WARN}WARNING:{Colors.COLEND} Running with sudo and SENZING_ROOT isn\'t set. Ensure setupEnv file is sourced and run with "sudo --preserve-env ./{script_name}"')
+            logger(f'Running with sudo and SENZING_ROOT isn\'t set. Ensure setupEnv file is sourced and run with "sudo --preserve-env ./{script_name}"', LogCats.WARNING)
         else:
-            print(f'\n{Colors.WARN}WARNING:{Colors.COLEND} SENZING_ROOT isn\'t set please source the project setupEnv file to use all features')
+            logger(f'SENZING_ROOT isn\'t set please source the project setupEnv file to use all features', LogCats.WARNING)
 
-        print(f'\n{Colors.WARN}WARNING:{Colors.COLEND} Without SENZING_ROOT set, only --saveImages (-si) and --loadImages modes are available')
+        logger(f'Without SENZING_ROOT set, only --saveImages (-si) and --loadImages modes are available')
 
     return senz_root
 
@@ -70,6 +158,8 @@ def get_host_name(tout=2):
     """ Attempt to get fully qualified hostname """
 
     host_name = None
+
+    logger('Collecting networking information...')
 
     # Test if on AWS and fetch AWS external hostname
     # https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/instancedata-data-retrieval.html
@@ -92,12 +182,8 @@ def get_host_name(tout=2):
 
     # Otherwise set to localhost, can be overridden with the -ho CLI arg
     if not host_name:
-        print(textwrap.dedent(f'''\n\
-            {Colors.WARN}WARNING:{Colors.COLEND} Unable to detect a hostname, using localhost, this could cause issues.
-
-                     If networking issues arise please set a hostname or try using the --host (-ho) argument
-                     to specify host or ip address.
-                '''))
+        logger('Unable to detect a hostname, using localhost, this could cause issues.', cat=LogCats.WARNING)
+        logger('If networking issues arise, set a hostname or try using the --host (-ho) argument to specify host or ip address.', cat=LogCats.WARNING)
         host_name = 'localhost'
 
     return host_name, False
@@ -130,11 +216,8 @@ def get_ip_addr(host_name, tout=2):
             ipv4 = sock.getsockname()[0]
 
     if not ipv4:
-        print(textwrap.dedent(f'''\n\
-            {Colors.WARN}WARNING:{Colors.COLEND} Unable to detect an IP address, using 127.0.0.1, this could cause issues.
-
-                     If networking issues arise please check if a valid IP address is assigned.
-                '''))
+        logger('Unable to detect an IP address, using 127.0.0.1, this could cause issues.', LogCats.WARNING)
+        logger('If networking issues arise please check if a valid IP address is assigned.', LogCats.WARNING)
         ipv4 = '127.0.0.1'
 
     return ipv4
@@ -151,10 +234,8 @@ def ini_localhost_check(ini_file_name):
 
             # Look for localhost in normal and cluster ini lines
             if (line_check.startswith('connection') or line_check.startswith('db_1')) and ('@localhost:' in line_check or '@127.0.0.1:' in line_check):
-                print(textwrap.dedent(f'''\n\
-                    {Colors.ERROR}ERROR:{Colors.COLEND} Connection string cannot use localhost or 127.0.0.1, use a true hostname or ip address
-                           {line}
-                '''))
+                logger('Connection string cannot use localhost or 127.0.0.1, use a hostname or ip address', LogCats.ERROR)
+                logger(f'\t{line}')
                 sys.exit(1)
 
 
@@ -172,34 +253,35 @@ def convert_ini2json(ini_file_name):
     return ini_json
 
 
-def internet_access(url, retries=3, retries_start=None, tout=2, check_msg=True):
+def internet_access(url, retries=3, retries_start=None, tout=2, check_msg=False):
     """ Test for access to resources that are required"""
 
     if check_msg:
-        print(f'\n\t{url}', end='', flush=True)
+        logger('Checking for internet access and Senzing resources...')
 
     try:
         urllib.request.urlopen(url, timeout=tout)
-        print(f'{Colors.GREEN} Available{Colors.COLEND}', end='')
+        logger(f'{url} {Colors.GREEN}Available{Colors.END}')
         return True
     except (urllib.error.URLError, urllib.error.HTTPError, socket.timeout):
         if retries > 1:
-            print('.', end='', flush=True)
             retries -= 1
             retries_start = retries if not retries_start else retries_start
             sleep(1)
             internet_access(url, retries, retries_start, check_msg=False)
 
     if retries == retries_start:
-        print(f'{Colors.WARN} Unavailable{Colors.COLEND}', end='')
-
+        logger(f'{url} {Colors.WARN}Unavailable{Colors.END}')
     return False
 
 
-def get_api_spec(url, retries=5, tout=5):
+def get_api_spec(url, retries=10, tout=5):
     """ Get the REST API specification from the REST server """
 
     retry = retries
+
+    if retry == retries:
+        logger('Fetching API specification from REST server')
 
     while retry > 0:
 
@@ -207,25 +289,17 @@ def get_api_spec(url, retries=5, tout=5):
             api_spec_url = urllib.request.urlopen(url, timeout=tout)
             api_spec = api_spec_url.read()
             return api_spec
-        except (urllib.error.URLError, urllib.error.HTTPError, ConnectionResetError) as ex:
+        except (urllib.error.URLError, urllib.error.HTTPError, ConnectionResetError):
             sleep_time = 5 * (retries - retry) if retry < ceil(retries/retry) else 5
-            print(textwrap.dedent(f'''\n
-                             {Colors.INFO}INFO:{Colors.COLEND} Waiting for API specification from REST server, pausing for {sleep_time}s before retry...                          
-                                       {ex}'''))
+            logger(f'Waiting for API specification from REST server, pausing for {sleep_time}s before retry...')
             sleep(sleep_time)
             retry -= 1
         except Exception as ex:
-            print(textwrap.dedent(f'''\n
-                    {Colors.ERROR}ERROR:{Colors.COLEND} General error communicating with the REST server, cannot continue!
-                          {ex}
-            '''))
-
+            logger('General error communicating with the REST server, cannot continue!', LogCats.ERROR)
+            logger(ex, LogCats.ERROR)
             sys.exit(1)
 
-    print(textwrap.dedent(f'''\n
-            {Colors.ERROR}ERROR:{Colors.COLEND} Unable to connect to or fetch API specification from REST server, cannot continue!
-            '''))
-
+    logger('Unable to connect to or fetch API specification from REST server, cannot continue!', LogCats.ERROR)
     sys.exit(1)
 
 
@@ -247,16 +321,12 @@ def parse_versions(url):
         versions = {kv.split('=')[0]: kv.split('=')[1] for kv in
                     [line for line in page.split('\n') if line.startswith('SENZING_')]}
     except urllib.error.HTTPError as ex:
-        print(textwrap.dedent(f'''\n\
-            {Colors.ERROR}ERROR:{Colors.COLEND} Fetching latest versions, the server couldn't fulfill the request.
-                   Error code: {ex.code})
-        '''))
+        logger('Fetching latest versions, the server couldn\'t fulfill the request.', LogCats.ERROR)
+        logger(f'Error code: {ex.code}')
         return False
     except urllib.error.URLError as ex:
-        print(textwrap.dedent(f'''\n\
-            {Colors.ERROR}ERROR:{Colors.COLEND} Fetching latest versions, failed to reach a server.
-                   Reason: {ex.reason})
-        '''))
+        logger('Fetching latest versions, failed to reach a server.', LogCats.ERROR)
+        logger(f'Reason: {ex.reason}')
         return False
 
     return versions
@@ -265,23 +335,16 @@ def parse_versions(url):
 def docker_checks(script_name):
     """ Perform checks for Docker """
 
-    print('\nPerforming Docker checks...\n', flush=True)
+    logger('Performing Docker checks...')
 
     # Is Docker installed?
     try:
-        dversion = subprocess.run(['docker', '--version'], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                  encoding='utf8')
+        dversion = subprocess.run(['docker', '--version'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding='utf8')
         if 'podman' in dversion.stdout.lower():
-            print(textwrap.dedent(f'''\n
-                {Colors.ERROR}ERROR:{Colors.COLEND} Podman is being used instead of Docker, this is unsupported this tool requires Docker
-                       https://docs.docker.com/engine/install/
-            '''))
+            logger('Podman is being used, this is unsupported this tool requires Docker: https://docs.docker.com/engine/install/', LogCats.ERROR)
             sys.exit(1)
     except FileNotFoundError:
-        print(textwrap.dedent(f'''\n\
-                {Colors.ERROR}ERROR:{Colors.COLEND} Docker doesn\'t appear to be installed and is required
-                       https://docs.docker.com/engine/install/
-            '''))
+        logger('Docker doesn\'t appear to be installed and is required: https://docs.docker.com/engine/install/', LogCats.ERROR)
         sys.exit(1)
 
     # Not launched as sudo, check if user can use docker without sudo
@@ -292,23 +355,21 @@ def docker_checks(script_name):
 
         if check.returncode != 0:
             if 'permission denied' and 'socket' in check.stderr:
-                print(
-                    f'\n{Colors.ERROR}ERROR:{Colors.COLEND} User cannot run Docker, you need to run with "sudo --preserve-env ./{script_name}" or be added to the docker group...\n')
+                logger(f'User cannot run Docker, run with "sudo --preserve-env ./{script_name}" or be added to the docker group', LogCats.ERROR)
             else:
-                print(f'\n{Colors.ERROR}ERROR:{Colors.COLEND} {check.stderr}')
+                logger(check.stderr, LogCats.ERROR)
             sys.exit(1)
 
 
-def docker_init():
+def docker_init(url):
     """ Initialise a Docker client """
 
     try:
-        client = docker.from_env()
+        client = docker.DockerClient(base_url=url)
     except docker.errors.DockerException as ex:
-        print(textwrap.dedent(f'''\n\
-            {Colors.ERROR}ERROR:{Colors.COLEND} Unable to instantiate Docker, is the Docker service running?
-                   {ex}
-        '''))
+        logger('Unable to instantiate Docker, is the Docker service running and Docker URL correct?', LogCats.ERROR)
+        logger(ex, LogCats.ERROR)
+        logger(f'Docker URL: {url}', LogCats.ERROR)
         sys.exit(1)
 
     return client
@@ -320,15 +381,16 @@ def docker_image_exists(docker_client, image_name):
     return True if docker_client.images.list(name=image_name) else False
 
 
-def pull_default_images(docker_client, docker_containers, no_web_app, no_swagger, force_pull):
+def pull_default_images(docker_client, docker_containers, no_web_app, no_swagger, check_health, dock_run_args):
     """ Docker pull the base set of images required for the tool
         Senzing Rest API server, Senzing Entity Search App, Swagger UI
     """
 
-    print('\nChecking and pulling Docker images, this may take many minutes...\n')
+    logger('Checking and pulling Docker images, this may take many minutes')
+
+    images_to_pull = {}
 
     for key, image_list in docker_containers.items():
-
         # Skip pulling images if CLI args request not to deploy
         if no_web_app and image_list['imagename'] == 'senzing/entity-search-web-app':
             continue
@@ -336,73 +398,92 @@ def pull_default_images(docker_client, docker_containers, no_web_app, no_swagger
         if no_swagger and image_list['imagename'] == 'swaggerapi/swagger-ui':
             continue
 
-        image_with_version = image_list['imagename'] + ':' + image_list['tag']
+        images_to_pull[key] = image_list['imagename'] + ':' + image_list['tag']
 
-        did_pull = docker_pull(docker_client, image_with_version, force_pull)
-        if not did_pull and key == 'restapi':
-            print(
-                f'\n{Colors.ERROR}ERROR:{Colors.COLEND} Couldn\'t pull REST API Server image, can\'t continue without it!')
-            sys.exit(0)
-        elif did_pull == 'PULLED':
-            docker_containers[key]['imagepulled'] = True
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(images_to_pull)) as executor:
+        future_pull = {executor.submit(docker_pull,
+                                       docker_client,
+                                       image,
+                                       docker_containers[key]['msgcolor'],
+                                       docker_containers[key]['msgcolor'],
+                                       key):
+                                           (key, image) for key, image in images_to_pull.items()}
+        for future in concurrent.futures.as_completed(future_pull):
+            pull_success = future_pull[future]
+            try:
+                result, key = future.result()
+            except docker.errors.DockerException as ex:
+                logger(ex, cat=LogCats.ERROR, task_color=docker_containers[key]['msgcolor'], task=pull_success[0])
+                if pull_success[0] == 'REST API Server':
+                    logger('Couldn\'t pull REST API Server image, can\'t continue without it!', LogCats.ERROR)
+                    sys.exit(1)
+            else:
+                docker_containers[key]['imagepulled'] = True
+                docker_containers[key]['imageavailable'] = True
 
-        docker_containers[key]['imageavailable'] = True
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor2:
+        future_run = {executor2.submit(docker_run, docker_client, docker_containers, check_health, **parms): parms for parms in dock_run_args}
+        for future in concurrent.futures.as_completed(future_run):
+            pull_success = future_run[future]
+            try:
+                _ = future.result()
+            except docker.errors.DockerException as ex:
+                logger(ex, cat=LogCats.ERROR, task_color=docker_containers[key]['msgcolor'], task=pull_success[0])
+                sys.exit(1)
 
 
-def docker_pull(docker_client, image, force_pull):
+def docker_pull(docker_client, image, msg_color=Colors.DEFAULT, task_color=Colors.BLUE, key='SenzingGo'):
     """ Pull Docker images """
 
-    def pull_image(image_to_pull, is_forced=False):
+    logger(f'Pulling image {image}...', msg_color=msg_color, task_color=task_color, task=key)
 
-        print(f'\n\tPulling {"(forced) " if is_forced else ""}{image_to_pull}...', flush=True)
-
-        try:
-            docker_client.images.pull(image)
-            return 'PULLED'
-        except (docker.errors.ImageNotFound, docker.errors.NotFound) as ex:
-            print(f'\t{ex}')
-            print(f'\n\t{Colors.INFO}INFO:{Colors.COLEND} If above error is image cannot be found check free storage, lack of storage can throw such an error.')
-            return False
-
-    if force_pull:
-        return pull_image(image, True)
-
-    if not docker_image_exists(docker_client, image):
-        return pull_image(image)
-    else:
-        print(f'\t{image} {Colors.GREEN}Exists, not pulling{Colors.COLEND}', flush=True)
-
-    return True
+    try:
+        for pull_resp in docker_client.api.pull(image, stream=True, decode=True):
+            if pull_resp['status'][:7] == 'Status:':
+                logger(pull_resp["status"][8:],
+                       msg_color=msg_color,
+                       task_color=task_color,
+                       task=key)
+        return 'PULLED', key
+    except (docker.errors.ImageNotFound, docker.errors.NotFound) as ex:
+        logger('If the following error is image cannot be found, check free storage. Lack of storage can throw such an error.',
+               LogCats.ERROR,
+               task_color=task_color,
+               task=key)
+        logger(ex, LogCats.ERROR)
+        raise
 
 
 def docker_net(docker_client, network_name, network_driver='bridge'):
     """ Create a Docker network for use by the project containers """
 
     if not docker_client.networks.list(names=network_name):
-        print(f'Docker network {network_name} doesn\'t exist, creating...\n')
+        logger(f'Docker network {network_name} doesn\'t exist, creating...')
 
         try:
             docker_client.networks.create(name=network_name, driver=network_driver)
         except docker.errors.DockerException as ex:
-            print(f'{ex}')
+            logger(f'{ex}', LogCats.ERROR)
             sys.exit(1)
 
 
-def docker_cont_list(docker_client, all_conts=True, cont_filters={}):
+def docker_cont_list(docker_client, all_conts=True, cont_filters=None):
     """ Get a list of the current Docker containers """
+
+    cont_filters = {} if not cont_filters else cont_filters
 
     return docker_client.containers.list(all=all_conts, filters=cont_filters)
 
 
-def docker_run(docker_client, docker_containers, skip_health, **kwargs):
+def docker_run(docker_client, docker_containers, check_health, **kwargs):
     """ Create and run a container """
 
-    def status_wait(msg, check, cont_name, loop_cnt=20, t_sleep=5):
+    def status_wait(msg, color, check, cont_name, loop_cnt=20, t_sleep=5):
         """ Wait for container to become healthy if it reports health """
 
-        print(f'\n\t{msg}', end='', flush=True)
-
         for r in range(loop_cnt):
+            logger(msg, task_color=color, msg_color=color, task=container_key)
+
             cont_status = docker_client.containers.get(cont_name).status
             cont_attrs = docker_client.containers.get(cont_name).attrs
 
@@ -410,70 +491,107 @@ def docker_run(docker_client, docker_containers, skip_health, **kwargs):
                 return check
 
             if check == 'healthy' and cont_attrs['State']['Health']['Status'] == 'healthy':
-                print()
                 return check
 
-            sleep(t_sleep)
-            print('.', end='', flush=True)
-        print()
+            time.sleep(t_sleep)
 
         cont_status = docker_client.containers.get(cont_name).status
         cont_attrs = docker_client.containers.get(cont_name).attrs
 
         return cont_status if check == 'running' else cont_attrs['State']['Health']['Status']
 
-    def docker_logs(cont):
-        """ Dump Docker logs for a container """
-
-        if cont:
-            print(f'{Colors.WARN}\n********** Start Docker Logs **********\n{Colors.COLEND}')
-            print(cont.logs().decode())
-            print(f'{Colors.WARN}\n********** End Docker Logs **********\n{Colors.COLEND}')
-
     # Get the container key to use at the end to set startedok status
     container_key = kwargs['container']
+    container_color = docker_containers[container_key]["msgcolor"]
+
+    logger('Running...', msg_color=container_color, task_color=container_color, task=kwargs["container"], )
 
     # Remove the container key from the args sent to the run, only used to set startedok
     del kwargs['container']
 
-    print(f'\nRunning {kwargs["image"]}...')
-
     try:
         docker_client.containers.run(**kwargs)
     except docker.errors.APIError as ex:
-        print(f'\n{Colors.ERROR}ERROR:{Colors.COLEND} {ex}')
+        logger(f'{ex}', LogCats.ERROR)
         sys.exit(1)
 
-    if not skip_health:
-        if status_wait(f'Waiting for container to start...', 'running', kwargs['name']) == 'exited':
-            print(f'\n\t{Colors.ERROR}ERROR:{Colors.COLEND} Container did not start successfully, status: {docker_client.containers.get(kwargs["name"]).status}')
-            docker_logs(docker_client.containers.get(kwargs['name']))
+    if check_health:
+        if status_wait('Waiting for container to start...', container_color, 'running', kwargs['name']) == 'exited':
+            logger(f'Container did not start successfully, status: {docker_client.containers.get(kwargs["name"]).status}',
+                   LogCats.ERROR,
+                   task=container_key)
+            logger(f'Check the status and outcome with the command: {Colors.DEFAULT}"docker logs {kwargs["name"]}"{Colors.END}',
+                   LogCats.ERROR,
+                   task_color=container_color,
+                   task=container_key)
             sys.exit(1)
 
-        # Container might not have HEALTHCHECK set in Docker file, if it does wait for it to become healthy
         if docker_client.containers.get(kwargs['name']).attrs.get('State').get('Health', None):
-            if status_wait('Waiting for container to become healthy.', 'healthy', kwargs['name']) != 'healthy':
-                print(f'\n\t{Colors.WARN}WARNING:{Colors.COLEND} Container isn\'t healthy yet or failed, monitor with the command "docker logs {kwargs["name"]}"')
-                docker_logs(docker_client.containers.get(kwargs['name']))
+            if status_wait('Waiting for container to become healthy...', container_color, 'healthy', kwargs['name']) != 'healthy':
+                logger(f'Container isn\'t healthy yet or failed, monitor with the command: {Colors.DEFAULT}"docker logs {kwargs["name"]}"{Colors.END}',
+                       LogCats.WARNING,
+                       task_color=container_color,
+                       task=container_key)
+            else:
+                logger('Started', msg_color=container_color, task_color=container_color, task=container_key)
         else:
-            print('\n\tThis container doesn\'t report health')
-            print(f'\tUse the command "docker logs {kwargs["name"]}" to check status if issues arise ')
+            logger('This container doesn\'t report health',
+                   LogCats.INFO,
+                   msg_color=container_color,
+                   task_color=container_color,
+                   task=container_key)
+            logger(f'Use the follow command to check status if any issues arise: {Colors.DEFAULT}"docker logs {kwargs["name"]}"{Colors.END}',
+                   LogCats.INFO,
+                   msg_color=container_color,
+                   task_color=container_color,
+                   task=container_key)
+            logger('Presumed started!',
+                   LogCats.INFO,
+                   msg_color=container_color,
+                   task_color=container_color,
+                   task=container_key)
 
-        docker_containers[container_key]['startedok'] = True
+    if not check_health:
+        logger('Started', msg_color=container_color, task_color=container_color, task=container_key)
+
+    # If didn't exit assume all is well
+    docker_containers[container_key]['startedok'] = True
 
 
 def containers_stop_remove(senzing_proj_name,
                            docker_client,
                            docker_containers,
                            containers_remove,
-                           containers_remove_no_prompt,
                            docker_network,
                            startup_remove=False,
                            forced_remove=False):
     """ Stop and optionally remove SenzingGo containers """
 
+    def container_remove(container):
+        """ """
+
+        # Remove leading / https://github.com/docker/docker-py/pull/2634
+        cont_name = container.attrs['Name'].lstrip('/')
+        cont_key = container.attrs['Config']['Labels']['SzGoContKey']
+
+        if cont_name in project_container_names:
+            logger('Stopping...', msg_color=docker_containers[cont_key]["msgcolor"], task_color=docker_containers[cont_key]["msgcolor"], task=cont_key)
+
+            try:
+                container.stop()
+            except docker.errors.APIError as ex:
+                logger(f'Failed to stop container: {ex}', LogCats.ERROR)
+
+            if containers_remove or startup_remove or forced_remove:
+                logger('Removing...', msg_color=docker_containers[cont_key]["msgcolor"], task_color=docker_containers[cont_key]["msgcolor"], task=cont_key)
+                try:
+                    # Remove volumes too
+                    container.remove(v=True, force=True)
+                except docker.errors.APIError as ex:
+                    logger(ex, LogCats.ERROR)
+
     # Only lists running containers, all=True to return all
-    print(f'Looking for existing containers to remove...\n')
+    logger('Looking for existing containers to remove')
 
     # Look for containers that match the project name, including any that are not running (all=True)
     containers = docker_cont_list(docker_client, all_conts=True, cont_filters={'name': senzing_proj_name})
@@ -484,85 +602,49 @@ def containers_stop_remove(senzing_proj_name,
 
     # Don't print message if in startup and deleting any existing containers
     if not running_containers and not startup_remove:
-        print(
-            f'No matching containers for {senzing_proj_name}, were the containers created with a different suffix with -ps (--projectSuffix)?')
+        logger(f'No matching containers for {senzing_proj_name}, were they created with a different suffix with -ps (--projectSuffix)?')
         all_containers = docker_cont_list(docker_client, all_conts=True)
         if all_containers:
-            print('\nAvailable containers:\n')
+            logger('Available containers:')
             for cont in all_containers:
-                print(f'\t{cont.attrs["Name"].lstrip("/")}')
+                logger(f'\t{cont.attrs["Name"].lstrip("/")}')
         return
 
-    # Are you really sure you want to remove
-    if containers_remove:
-        spacer = '\n\t'
-        print(f'{Colors.WARN}WARNING:{Colors.COLEND} Are you sure you want to delete the following containers? (Y/n):')
-        print(f'{spacer}{spacer.join(c for c in running_containers)}')
-
-        if not input() in ['', 'y', 'Y', 'yes', 'YES']:
-            sys.exit(0)
-
-    for cont in containers:
-        # Remove leading / https://github.com/docker/docker-py/pull/2634
-        cont_name = cont.attrs['Name'].lstrip('/')
-
-        if cont_name in project_container_names:
-            print(f'\t{cont_name}')
-            print('\t\tStopping...')
-
-            try:
-                cont.stop()
-            except docker.errors.APIError as ex:
-                print(textwrap.dedent(f'''\n\
-                    {Colors.ERROR}ERROR:{Colors.COLEND} Failed to stop container
-                           {ex}
-                '''))
-
-            if containers_remove or containers_remove_no_prompt or startup_remove or forced_remove:
-                print('\t\tRemoving...\n')
-                try:
-                    # Remove volumes too
-                    cont.remove(v=True, force=True)
-                except docker.errors.APIError as ex:
-                    print(ex)
-            else:
-                print()
-
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+        future_rem = {executor.submit(container_remove, cont): cont for cont in containers}
+        concurrent.futures.wait(future_rem)
+    
     # Remove the network too
-    if containers_remove or containers_remove_no_prompt:
+    if containers_remove:
         network_list = docker_client.networks.list(names=docker_network)
 
         # Should only be one item in the list as use names filter above on the network for the project
         if network_list:
-            print(f'\nRemoving Docker network {network_list[0].attrs["Name"]}')
+            logger(f'Removing Docker network {network_list[0].attrs["Name"]}')
             with suppress(Exception):
                 network_list[0].remove()
 
 
-def containers_info(docker_client, docker_containers, senzing_proj_name, host_name, rest_api_command):
+def containers_info(docker_client, docker_containers, senzing_proj_name, host_name, rest_api_env):
     """ Get info for running containers, e.g. the url they are running on after startup information is lost
         Always show the command used for the REST Server
     """
 
-    def show_api_command(rest_api_command):
+    def show_api_env(env):
         """ Show API Server command for reference """
 
-        print(textwrap.dedent(f'''\n
-            Command the REST API Server container is starting with:
-
-                {' '.join([c for c in rest_api_command.split('  ') if c])}
-
-        '''))
-
+        logger(f'{Colors.BOLD}REST API Server environment variables:{Colors.END}', LogCats.INFO, msg_color=Colors.INFO)
+        for e in env:
+            logger(f'\t{e}')
         sys.exit(0)
 
-    print(f'\nLooking for containers matching {senzing_proj_name}...')
+    logger(f'Looking for containers matching {senzing_proj_name}...')
 
     containers = docker_cont_list(docker_client, all_conts=True, cont_filters={'name': senzing_proj_name})
 
     if not containers:
-        print(f'\nThere are currently no containers matching {senzing_proj_name}')
-        show_api_command(rest_api_command)
+        logger(f'There are currently no containers matching {senzing_proj_name}')
+        show_api_env(rest_api_env)
         sys.exit(0)
 
     for name in [c.name for c in containers]:
@@ -570,26 +652,26 @@ def containers_info(docker_client, docker_containers, senzing_proj_name, host_na
         # name is used as a key in the NetworkSettings -> Ports JSON object and is needed to find the host port the container
         # was started on
         if name.startswith('SzGo-API-'):
-            key = 'restapi'
+            key = 'REST API Server'
         elif name.startswith('SzGo-WEB-'):
-            key = 'webapp'
+            key = 'Web App Demo'
         elif name.startswith('SzGo-Swagger-'):
-            key = 'swagger'
+            key = 'Swagger UI'
         else:
             # Only continue and list info for SenzingGo containers
-            print(f'\nMatching containers found for {senzing_proj_name}, but they don\'t appear to be for SenzingGo')
+            logger(f'Matching containers found for {senzing_proj_name}, but they don\'t appear to be for SenzingGo')
             sys.exit(0)
 
         status = docker_client.containers.get(name).attrs.get("State")["Status"]
-        print(f'\nContainer: {name}\n')
-        print(f'\tImage:  {docker_client.containers.get(name).attrs.get("Config").get("Image")}')
-        print(f'\tStatus: {status}')
+        logger(f'{Colors.BOLD}{Colors.BLUE}Container:{Colors.END} {name}')
+        logger(f'    {Colors.BOLD}{Colors.BLUE}Image:{Colors.END} {docker_client.containers.get(name).attrs.get("Config").get("Image")}')
         if status == 'running':
             host_port = docker_client.containers.get(name).attrs.get("NetworkSettings").get("Ports")[
                 str(docker_containers[key]["containerport"]) + "/tcp"][0]["HostPort"]
-            print(f'\tURL:    http://{host_name}:{host_port}')
+            logger(f'      {Colors.BOLD}{Colors.BLUE}URL:{Colors.END} http://{host_name}:{host_port}')
+        logger('')
 
-    show_api_command(rest_api_command)
+    show_api_env(rest_api_env)
 
 
 def container_logs(docker_client, logs_string=None):
@@ -600,11 +682,11 @@ def container_logs(docker_client, logs_string=None):
 
     if matching_containers:
         for cont in matching_containers:
-            print(f'\n{Colors.GREEN}********** Start logs for {cont.name} **********{Colors.COLEND}')
+            print(f'\n{Colors.GREEN}********** Start logs for {cont.name} **********{Colors.END}')
             print(f'\n{cont.logs().decode()}')
-            print(f'\n{Colors.GREEN}********** End logs for {cont.name} **********\n{Colors.COLEND}')
+            print(f'\n{Colors.GREEN}********** End logs for {cont.name} **********\n{Colors.END}')
     else:
-        print('\nNo matching container(s) to show logs for, use -i (--info) to see available containers\n')
+        logger('No matching container(s) to show logs for, use -i (--info) to see available containers')
 
     sys.exit(0)
 
@@ -613,32 +695,26 @@ def list_image_names(docker_image_names, access, versions):
     """ Get a list of all Senzing image names, used when packaging a custom save images file """
 
     if not access:
-        print(f'\n{Colors.ERROR}ERROR:{Colors.COLEND} Unable to obtain the list of Senzing Docker images to display')
+        logger('Unable to obtain the list of Senzing Docker images to display', LogCats.ERROR)
         sys.exit(1)
-    print()
 
     try:
-        # Read the docker images json file from github
+        # Read the docker images json file from GitHub
         response = urllib.request.urlopen(docker_image_names)
         page = response.read().decode()
     except urllib.error.HTTPError as ex:
-        print(textwrap.dedent(f'''\n\
-            {Colors.BLUE}INFO:{Colors.COLEND} Fetching image names, the server couldn't fulfill the request.
-                  Error code: {ex.code})
-            '''))
+        logger('Fetching image names, the server couldn\'t fulfill the request.', LogCats.WARNING)
+        logger(f'Error code: {ex.code}', LogCats.WARNING)
         return False
     except urllib.error.URLError as ex:
-        print(textwrap.dedent(f'''\n\
-            {Colors.BLUE}INFO:{Colors.COLEND} Fetching image names, failed to reach a server.
-                  Reason: {ex.reason}
-            '''))
+        logger('Fetching image names, failed to reach server.', LogCats.WARNING)
+        logger(f'Reason: {ex.reason}', LogCats.WARNING)
         return False
 
     docker_image_names = json.loads(page)
 
     if not versions:
-        print('Using "latest" for version, the versions file wasn\'t available for reference')
-    print()
+        logger('Using "latest" for version, the versions file wasn\'t available for reference', LogCats.INFO)
 
     # Display the image name (k) and either the version number if available or latest
     for k, v in docker_image_names.items():
@@ -651,42 +727,78 @@ def get_timestamp():
     return datetime.now().strftime("%Y%m%d_%H%M%S")
 
 
-def save_images(docker_client, docker_containers, save_images, save_images_path, access_dockerhub, no_web_app, no_swagger, force_pull):
+def save_images(docker_client, docker_containers, images, save_images_path, access_dockerhub, no_web_app, no_swagger):
     """ Package up base set or custom set of images to transfer and use on another system """
+
+    def save_image(i):
+        """"""
+
+        package_file = f'{package_path}/SzGoPackage-{i.replace("/", "-").replace(":", "-")}.tar'
+        packaged_files.append(package_file)
+
+        try:
+            with open(package_file, 'wb') as sf:
+                image_to_save = docker_client.images.get(i)
+                logger(f'Saving {i} to {package_file}...')
+                for chunk in image_to_save.save(named=True):
+                    sf.write(chunk)
+        except (FileNotFoundError, IOError) as exx:
+            logger(exx, LogCats.ERROR)
+            sys.exit(1)
 
     avail_images_with_tag = []
     packaged_files = []
+    images_to_pull = []
 
     # Set package path depending on if default value (str) was used or a path was specified (list)
     package_path = save_images_path[0] if isinstance(save_images_path, list) else save_images_path
 
     if not access_dockerhub:
-        print(
-            f'\n{Colors.WARN}WARNING:{Colors.COLEND} Cannot reach internet to pull images, can only package existing ones if available locally')
+        logger('Cannot reach internet to pull images, can only package existing ones if available locally', LogCats.WARNING)
 
     # If a list of packages was specified pull them, otherwise no arguments on saveimages arg
-    if len(save_images) > 0:
+    if len(images) > 0:
 
         # If have internet access perform pull
-        # If don't have internet access check if each image exists, if it doesn't error as can't complete the request
-        for image in save_images:
+        for image in images:
             if access_dockerhub:
-                docker_pull(docker_client, image, force_pull)
+                img, _, tag = image.partition(':')
 
-            try:
-                docker_client.images.get(image)
-            except docker.errors.ImageNotFound:
-                print(
-                    f'\n{Colors.ERROR}ERROR:{Colors.COLEND} Image {image} isn\'t available to save, can\'t complete request.')
-                sys.exit(1)
+                if not tag:
+                    logger(f'{Colors.INFO}INFO{Colors.END}: Tag is missing from {image}, defaulting to "latest"')
+                    images_to_pull.append(image + ":latest")
 
-            avail_images_with_tag.append(image)
+                if not img:
+                    logger(f'{Colors.ERROR}ERROR{Colors.END}: Image is missing from {image}, can\'t pull!')
+                    sys.exit(1)
+
+                images_to_pull.append(image)
+            # If don't have internet access check if each image exists, if it doesn't error as can't complete the request
+            else:
+                try:
+                    docker_client.images.get(image)
+                except docker.errors.ImageNotFound:
+                    logger(f'Image {image} isn\'t locally available to save, can\'t complete request.', LogCats.ERROR)
+                    sys.exit(1)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(images_to_pull)) as executor3:
+            future_pull = {executor3.submit(docker_pull, docker_client, img, Colors.DEFAULT, Colors.BLUE): img for img in images_to_pull}
+            for future in concurrent.futures.as_completed(future_pull):
+                try:
+                    _, key = future.result()
+                except Exception as ex:
+                    logger(f'Image {image} failed to pull!', LogCats.ERROR)
+                    logger(ex, LogCats.ERROR)
+                    sys.exit(1)
+                else:
+                    # future_pull[future] containers the image with tag
+                    avail_images_with_tag.append(future_pull[future])
 
     # Normal packaging of the base images needed for rest, webapp, swagger
     else:
         images_newest_dict = {}
         if access_dockerhub:
-            pull_default_images(docker_client, docker_containers, no_web_app, no_swagger, force_pull)
+            pull_default_images(docker_client, docker_containers, no_web_app, no_swagger, False, None)
 
         # Get a list of all images, only get the first tag entry [0] if there are > 1 tags
         images = [i.tags[0] for i in docker_client.images.list()]
@@ -708,33 +820,21 @@ def save_images(docker_client, docker_containers, save_images, save_images_path,
         # If an image name without the tag is in the base set of images add it to be packaged
         # In this packaging mode only want the 3 base images
         for candidate_image in avail_to_package:
-            if candidate_image.split(':')[0] in (docker_containers['restapi']['imagename'],
-                                                 docker_containers['webapp']['imagename'],
-                                                 docker_containers['swagger']['imagename']):
+            if candidate_image.split(':')[0] in (docker_containers['REST API Server']['imagename'],
+                                                 docker_containers['Web App Demo']['imagename'],
+                                                 docker_containers['Swagger UI']['imagename']):
                 avail_images_with_tag.append(candidate_image)
 
     if not avail_images_with_tag:
-        print(f'\n{Colors.ERROR}ERROR:{Colors.COLEND} There are no locally available images to save')
+        logger(f'There are no locally available images to save', LogCats.ERROR)
         sys.exit(1)
 
-    # Write each image out to a file, named as the image with / and : replaced with -
-    # The Docker API doesn't support saving multiple images to a single tar like native docker save command
-    for image in avail_images_with_tag:
-        package_file = f'{package_path}/SzGoPackage-{image.replace("/", "-").replace(":", "-")}.tar'
-        packaged_files.append(package_file)
-
-        try:
-            with open(package_file, 'wb') as sf:
-                image_to_save = docker_client.images.get(image)
-                print(f'\nSaving {image} to {package_file}...')
-                for chunk in image_to_save.save(named=True):
-                    sf.write(chunk)
-        except FileNotFoundError as ex:
-            print(f'\n{Colors.ERROR}ERROR:{Colors.COLEND} {ex}')
-            sys.exit(1)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(avail_images_with_tag)) as executor:
+        future_save = {executor.submit(save_image, image): image for image in avail_images_with_tag}
+        concurrent.futures.wait(future_save)
 
     compressed_package = f'{package_path}/SzGoImages_{get_timestamp()}.tgz'
-    print(f'\nCompressing saved images to {compressed_package}, this will take several minutes...')
+    logger(f'Compressing images to {compressed_package}...')
 
     # Add the image tar files to compressed tar and delete the image tar files
     try:
@@ -744,38 +844,48 @@ def save_images(docker_client, docker_containers, save_images, save_images_path,
                 tar.add(name, recursive=False, arcname=Path(name).name)
                 os.remove(name)
     except FileNotFoundError as ex:
-        print(f'\n{Colors.ERROR}ERROR:{Colors.COLEND} {ex}')
+        logger(ex, LogCats.ERROR)
         sys.exit(1)
 
-    print(textwrap.dedent(f'''\n\
-        Move {compressed_package} to the system to load the images to and run this tool with --loadImages (-li)
-    '''))
+    logger(f'Move {compressed_package} to the system to load the images to', LogCats.INFO, msg_color=Colors.INFO)
+    logger('Run this tool on the above system with --loadImages (-li) or Docker load commands to make them available', LogCats.INFO, msg_color=Colors.INFO)
 
 
 def load_images(docker_client, var_path, load_file_path):
-    """ Load images that have previously been packaged up with save images """
+    """ Load images that have previously been packaged u with save images """
+
+    def load_image(img_file):
+        """"""
+
+        logger(f'Loading image file {img_file.name}...')
+        try:
+            with open(img_file, 'rb') as lf:
+                docker_client.images.load(lf)
+        except FileNotFoundError as exx:
+            logger(exx, LogCats.ERROR)
+            sys.exit(1)
+        except docker.errors.DockerException as exx:
+            logger('Unable to instantiate Docker, is the Docker service running and Docker URL correct?', LogCats.ERROR)
+            logger(exx, LogCats.ERROR)
+        else:
+            logger(f'Image file {img_file.name} loaded')
 
     extract_path = var_path / f'SzGo_Extract_{get_timestamp()}'
     file_to_extract = Path(load_file_path).resolve()
 
     # Uncompress tar file to retrieve the tar image files
-    print(f'Extracting Senzing Docker images from {file_to_extract}...')
+    logger(f'Extracting Senzing Docker images from {file_to_extract}...')
 
     try:
         with tarfile.open(file_to_extract, 'r:gz') as tar:
             tar.extractall(path=extract_path)
     except FileNotFoundError as ex:
-        print(f'\n{Colors.ERROR}ERROR:{Colors.COLEND} {ex}')
+        logger(ex, LogCats.ERROR)
         sys.exit(1)
 
-    for image_file in os.scandir(extract_path):
-        print(f'\tLoading image file {image_file.name}')
-        try:
-            with open(image_file, 'rb') as lf:
-                docker_client.images.load(lf)
-        except FileNotFoundError as ex:
-            print(f'\n{Colors.ERROR}ERROR:{Colors.COLEND} {ex}')
-            sys.exit(1)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(os.listdir(extract_path))) as executor:
+        future_load = {executor.submit(load_image, image_file): image_file for image_file in os.scandir(extract_path)}
+        concurrent.futures.wait(future_load)
 
     # Once completed remove the temp extract dir
     with suppress(Exception):
@@ -789,28 +899,24 @@ def patch_ini_json(ini_json):
         """ """
 
         try:
-            dbtype, connection = connection_string.split(':', 1)
+            dbt, conn = connection_string.split(':', 1)
         except ValueError:
-            print(textwrap.dedent(f'''\n\
-                {Colors.ERROR}ERROR:{Colors.COLEND} Couldn\'t parse connection string and find the database type:
-                       {connection_string}'
-            '''))
+            logger('Couldn\'t parse connection string and find the database type:', LogCats.ERROR)
+            logger(connection_string, LogCats.ERROR)
             sys.exit(1)
 
-        return dbtype, connection
+        return dbt, conn
 
     def get_path(connection_string):
         """ """
 
-        _, connection = type_connection_split(connection_string)
+        _, conn = type_connection_split(connection_string)
 
         try:
-            _, conn_str = connection.split('@', 1)
+            _, conn_str = conn.split('@', 1)
         except ValueError:
-            print(textwrap.dedent(f'''\n\
-                {Colors.ERROR}ERROR:{Colors.COLEND} Couldn\'t parse connection string on @:
-                       {conn_str}
-            '''))
+            logger('Couldn\'t parse connection string on @:', LogCats.ERROR)
+            logger(conn, LogCats.ERROR)
             sys.exit(1)
 
         conn_str_path = Path(conn_str).resolve().parent
@@ -848,9 +954,9 @@ def patch_ini_json(ini_json):
             unique_path_list = list(set(path_list))
 
             if len(unique_path_list) > 1:
-                print(f'\nWhen using a sqlite cluster, all database files must be in the same path:')
+                logger('When using a sqlite cluster, all database files must be in the same path:', LogCats.INFO)
                 for path in unique_path_list:
-                    print(f'\t{path}')
+                    logger(f'\t{path}', LogCats.INFO)
                 sys.exit(1)
 
             # The host path to mount in the docker run volume arg is the only value on the list after it was made unique
@@ -880,7 +986,7 @@ def mysql_check(senzing_root, lib_my_sql, db_type, senzing_support):
 
     if not lib_mysql_path.is_file():
         print(textwrap.dedent(f'''\n\
-                                  {Colors.WARN}WARNING:{Colors.COLEND} To use MySQL with this tool {lib_my_sql} is required to be in {senzing_root}/lib/
+                                  {Colors.WARN}WARNING{Colors.END}  To use MySQL with this tool {lib_my_sql} is required to be in {senzing_root}/lib/
                                            This allows the API server to use it inside the container. Senzing cannot distribute
                                            this file, to use Senzing with MySQL this must be user installed.
 
@@ -902,8 +1008,7 @@ def mysql_check(senzing_root, lib_my_sql, db_type, senzing_support):
         '''))
         sys.exit(1)
 
-    print(
-        f'\n{Colors.BLUE}INFO:{Colors.COLEND} Database type is {db_type} and {lib_my_sql} is available in {senzing_root}/lib')
+    logger(f'Database type is {db_type} and {lib_my_sql} is available in {senzing_root}/lib', LogCats.INFO)
 
 
 def db2_check(args, senzing_support):
@@ -913,7 +1018,7 @@ def db2_check(args, senzing_support):
         db2_cli_path = args.db2CliPath[0]
     except TypeError:
         print(textwrap.dedent(f'''\n\
-            {Colors.WARN}WARNING:{Colors.COLEND} When the database type is Db2 use the --db2CliPath (-db2c) argument to specify the
+            {Colors.WARN}WARNING{Colors.END}  When the database type is Db2 use the --db2CliPath (-db2c) argument to specify the
                      location on this machine of the Db2 client CLI drivers. This allows the API server
                      to use them inside the container. Senzing cannot distribute this installation, to
                      use Senzing with Db2 this must be user installed.
@@ -934,25 +1039,14 @@ def db2_check(args, senzing_support):
     db2_cli_cfg_file = Path(f'{db2_cli_path}/cfg/db2dsdriver.cfg')
 
     if not db2_cli_path_lib.is_dir():
-        print(textwrap.dedent(f'''\n\
-            {Colors.ERROR}ERROR:{Colors.COLEND} {str(db2_cli_path)} doesn't appear to contain the expected directories such as /cfg
-                   and /lib
-
-                   Is {str(db2_cli_path)} the path that contains the Db2 client CLI drivers and
-                   directories such as /cfg and /lib?
-
-                   {senzing_support}
-        '''))
-
+        logger(f'{str(db2_cli_path)} doesn\'t appear to contain the expected directories such as /cfg and /lib', LogCats.ERROR)
+        logger(f'Is {str(db2_cli_path)} the path that contains the Db2 client CLI drivers and directories such as /cfg and /lib?', LogCats.ERROR)
+        logger(senzing_support, LogCats.INFO)
         sys.exit(1)
 
     if not db2_cli_cfg_file.is_file():
-        print(textwrap.dedent(f'''\n\
-            {Colors.ERROR}ERROR:{Colors.COLEND} {str(db2_cli_cfg_file)} doesn't appear to exist and is required.
-
-                   {senzing_support}
-        '''))
-
+        logger(f'{str(db2_cli_cfg_file)} doesn\'t appear to exist and is required.', LogCats.ERROR)
+        logger(senzing_support, LogCats.INFO)
         sys.exit(1)
 
     with open(db2_cli_cfg_file, 'r') as cfgfile:
@@ -962,23 +1056,18 @@ def db2_check(args, senzing_support):
             # Look for localhost in alias and name cfg lines
             if (line_check.startswith('<dsn alias=') or line_check.startswith('<database name=')) and (
                     'localhost' in line_check or '127.0.0.1' in line_check):
-                print(textwrap.dedent(f'''\n\
-                    {Colors.ERROR}ERROR:{Colors.COLEND} Host in the db2dsdriver.cfg file cannot use localhost or 127.0.0.1, use a true hostname or ip address
-                           {line.lstrip()}
-                '''))
+                logger('Host in the db2dsdriver.cfg file cannot use localhost or 127.0.0.1, use a true hostname or ip address', LogCats.ERROR)
+                logger(senzing_support, LogCats.INFO)
                 sys.exit(1)
 
 
 def package_msg():
     """ Message for packaging """
 
-    print(textwrap.dedent(f'''\n\
-        {Colors.BLUE}INFO:{Colors.COLEND} This tool can be used on another system with internet access and Docker to package up the required Docker
-              images. This package can subsequently be used on this (or other machines) to make the required Docker images
-              available for use.
-
-              See --help" and the --saveImages (-si) and --loadImages (-li) arguments.
-        '''))
+    logger('This tool can be used on another system with internet access and Docker to package up the required Docker')
+    logger('images. This package can subsequently be used on this (or other machines) to make the required Docker images')
+    logger('available for use.')
+    logger('Run "SenzingGo.py --help" and review the --saveImages (-si) and --loadImages (-li) arguments.')
 
 
 def get_senzing_proj_name(root_path):
@@ -988,13 +1077,28 @@ def get_senzing_proj_name(root_path):
     # Valid chars in reference to Docker container names
     chars_remove = re.compile('[^a-zA-Z0-9_.-]')
     proj_name_clean = chars_remove.sub('', root_path)
+    # Replace spaces and periods to help with valid hostnames
+    proj_name_clean = proj_name_clean.replace(' ', '-')
+    proj_name_clean = proj_name_clean.replace('.', '_')
 
     if root_path != proj_name_clean:
-        print(
-            f'\n{Colors.BLUE}INFO:{Colors.COLEND} Container names will use the suffix {proj_name_clean} instead of {root_path}')
         return proj_name_clean
 
     return root_path
+
+
+def logger(msg,
+           cat=f'{Colors.INFO}{"INFO"}{Colors.END}',
+           task_color=Colors.BLUE,
+           msg_color=Colors.DEFAULT,
+           task='SenzingGo'):
+    """ Basic logger """
+
+    cat = f'{Colors.DIM}{cat: <16}{Colors.END}' if cat.__contains__('INFO') else cat
+    msg_color = Colors.WARN if cat == LogCats.WARNING else msg_color
+    msg_color = Colors.ERROR if cat == LogCats.ERROR else msg_color
+
+    print(f'{cat: <16} {Colors.MAGENTA}|{Colors.END} {task_color}{Colors.BOLD}{task: <16}{Colors.END}{Colors.MAGENTA}| {msg_color}{msg}{Colors.END}', flush=True)
 
 
 def main():
@@ -1028,7 +1132,7 @@ def main():
     DOCKER_LATEST_URL = 'https://raw.githubusercontent.com/Senzing/knowledge-base/main/lists/docker-versions-latest.sh'
     DOCKER_STABLE_URL = 'https://raw.githubusercontent.com/Senzing/knowledge-base/main/lists/docker-versions-stable.sh'
     DOCKERHUB_URL = 'https://hub.docker.com/u/senzing/'
-    DOCKER_IMAGE_NAMES = 'https://raw.githubusercontent.com/Senzing/knowledge-base/main/lists/docker-image-names.json'
+    DOCKER_IMAGE_NAMES = 'https://raw.githubusercontent.com/Senzing/knowledge-base/master/lists/docker-image-names.json'
     # SENZING_AIR_GAP_INSTALL = 'https://senzing.zendesk.com/hc/en-us/articles/360039787373-Install-Air-Gapped-Systems'
 
     SENZING_SUPPORT = 'For further assistance contact support@senzing.com'
@@ -1036,7 +1140,7 @@ def main():
 
     # Dict of the containers required and details to use, names match project path/name to allow >1 project and containers
     docker_containers = \
-        {'restapi':
+        {'REST API Server':
             {
                 'imagename': 'senzing/senzing-api-server',
                 'latestsuffix': 'SENZING_DOCKER_IMAGE_VERSION_SENZING_API_SERVER',
@@ -1046,9 +1150,10 @@ def main():
                 'imagepulled': False,
                 'imageavailable': None,
                 'tag': None,
-                'startedok': None
+                'startedok': None,
+                'msgcolor': Colors.GREEN
             },
-         'webapp':
+         'Web App Demo':
             {
                 'imagename': 'senzing/entity-search-web-app',
                 'latestsuffix': 'SENZING_DOCKER_IMAGE_VERSION_ENTITY_SEARCH_WEB_APP',
@@ -1058,9 +1163,10 @@ def main():
                 'imagepulled': False,
                 'imageavailable': None,
                 'tag': None,
-                'startedok': None
+                'startedok': None,
+                'msgcolor': Colors.MAGENTA
             },
-         'swagger':
+         'Swagger UI':
             {
                 'imagename': 'swaggerapi/swagger-ui',
                 'latestsuffix': 'SENZING_DOCKER_IMAGE_VERSION_SWAGGERAPI_SWAGGER_UI',
@@ -1070,7 +1176,8 @@ def main():
                 'imagepulled': False,
                 'imageavailable': None,
                 'tag': None,
-                'startedok': None
+                'startedok': None,
+                'msgcolor': Colors.YELLOW
             }
          }
 
@@ -1089,21 +1196,21 @@ def main():
 
                                 '''))
 
-    szgo_parser.add_argument('-ap', '--apiHostPort', type=int, default=docker_containers['restapi']['hostport'],
+    szgo_parser.add_argument('-ap', '--apiHostPort', type=int, default=docker_containers['REST API Server']['hostport'],
                              nargs=1, metavar='PORT',
                              help=textwrap.dedent('''\
                                 Port number of the REST API server, default=%(default)s
 
                                 '''))
 
-    szgo_parser.add_argument('-wp', '--webAppHostPort', type=int, default=docker_containers['webapp']['hostport'],
+    szgo_parser.add_argument('-wp', '--webAppHostPort', type=int, default=docker_containers['Web App Demo']['hostport'],
                              nargs=1, metavar='PORT',
                              help=textwrap.dedent('''\
                                 Port number of the Search Web App demo, default=%(default)s
 
                                 '''))
 
-    szgo_parser.add_argument('-sp', '--swaggerHostPort', type=int, default=docker_containers['swagger']['hostport'],
+    szgo_parser.add_argument('-sp', '--swaggerHostPort', type=int, default=docker_containers['Swagger UI']['hostport'],
                              nargs=1, metavar='PORT',
                              help=textwrap.dedent('''\
                                 Port number of Swagger UI, default=%(default)s
@@ -1132,12 +1239,6 @@ def main():
     stop_group.add_argument('-r', '--contRemove', default=False, action='store_true',
                             help=textwrap.dedent(f'''\
                                 Stop and remove any Docker containers named *{senzing_proj_name}
-
-                                '''))
-
-    stop_group.add_argument('-rn', '--contRemoveNoPrompt', default=False, action='store_true',
-                            help=textwrap.dedent(f'''\
-                                Stop and remove any Docker containers named *{senzing_proj_name} without prompting
 
                                 '''))
 
@@ -1186,6 +1287,12 @@ def main():
 
                                 '''))
 
+    szgo_parser.add_argument('-du', '--dockUrl', type=str, default='unix://var/run/docker.sock', metavar='URL',
+                             help=textwrap.dedent('''\
+                                URL for Docker server, default=%(default)s
+
+                                '''))
+
     szgo_parser.add_argument('-ho', '--host', type=str, default=None, nargs='?',
                              help=textwrap.dedent('''\
                                 Hostname, only use if tool can\'t determine correctly
@@ -1204,27 +1311,32 @@ def main():
 
                                 '''))
 
-    # Undocumented args - advanced usage with guidance from Senzing support
+    szgo_parser.add_argument('-wh', '--waitHealth', default=False, action='store_true',
+                             help=textwrap.dedent('''\
+                                Wait for health checking on containers starting, use if errors are reported during a run
+
+                                '''))
+
+    szgo_parser.add_argument('-u', '--update', default=False, action='store_true',
+                             help=textwrap.dedent('''\
+                                Update check
+
+                                '''))
+
+    # Undocumented args - usage with guidance from Senzing support
     szgo_parser.add_argument('-il', '--imagesList', default=False, action='store_true', help=argparse.SUPPRESS)
-    # It's easier to use -ij to get the JSON for the ini parms and set it as an env var and use --init-env-var for api server for custom command
-    #       export SENZING_INIT_JSON=$(./SenzingGo.py -ij)
-    #       ./SenzingGo.py -ac '--allowed-origins * --concurrency 10 --read-only false -verbose true --debug --http-port 8250 --bind-addr all --init-env-var SENZING_INIT_JSON'
-    szgo_parser.add_argument('-ac', '--apiServerCommand', type=str, default=None, help=argparse.SUPPRESS, nargs=1)
+    # ./SenzingGo.py -ae SENZING_API_SERVER_ENABLE_ADMIN=false SENZING_API_SERVER_ALLOWED_ORIGINS=* SENZING_API_SERVER_CONCURRENCY=10 SENZING_API_SERVER_READ_ONLY=false SENZING_API_SERVER_DEBUG=false SENZING_API_SERVER_PORT=8250 SENZING_API_SERVER_BIND_ADDR=all SENZING_API_SERVER_INIT_FILE=/etc/opt/senzing/G2Module.ini_SzGo.json
+    szgo_parser.add_argument('-ae', '--apiServerEnv', action='extend', default=None, help=argparse.SUPPRESS, nargs='+')
+    # ./SenzingGo.py -ae SENZING_API_SERVER_QUIET=true
+    szgo_parser.add_argument('-aex', '--apiServerEnvExtend', action='extend', default=None, help=argparse.SUPPRESS, nargs='+')
     szgo_parser.add_argument('-ad', '--apiServerDebug', default=False, action='store_true', help=argparse.SUPPRESS)
     szgo_parser.add_argument('-at', '--apiTag', type=str, default=None, help=argparse.SUPPRESS, nargs='?')
     szgo_parser.add_argument('-wt', '--webAppTag', type=str, default=None, help=argparse.SUPPRESS, nargs='?')
     szgo_parser.add_argument('-st', '--swaggerTag', type=str, default=None, help=argparse.SUPPRESS, nargs='?')
     szgo_parser.add_argument('-ij', '--iniToJson', default=False, action='store_true', help=argparse.SUPPRESS)
     szgo_parser.add_argument('-ijp', '--iniToJsonPretty', default=False, action='store_true', help=argparse.SUPPRESS)
-    # Used to force a pull even when the image tag exists locally already, e.g., did someone not update the tag!
-    szgo_parser.add_argument('-fp', '--forcePull', default=False, action='store_true', help=argparse.SUPPRESS)
-    # Don't wait for containers to become healthy or display status as starting
-    szgo_parser.add_argument('-sh', '--skipHealth', default=False, action='store_true', help=argparse.SUPPRESS)
     # If there are issues with the "latest" Docker images use the stable list instead
     szgo_parser.add_argument('-sd', '--stableDocker', default=False, action='store_true', help=argparse.SUPPRESS)
-    # Temporary work around during transition from API Server V2 -> V3 to account for differences in Dockerfile CMD / args
-    # This can be removed when stable Docker images move over to API Server V3, will only work with Senzing V2 projects
-    szgo_parser.add_argument('-av2', '--apiV2', default=False, action='store_true', help=argparse.SUPPRESS)
 
     args = szgo_parser.parse_args()
 
@@ -1256,26 +1368,27 @@ def main():
                 print(json.dumps(ini_json, indent=4))
             sys.exit(0)
 
-        # Build the command for the REST API Server, build early to use in other functions
-        rest_api_command = f'java -jar senzing-api-server.jar \
-                             --enable-admin {"true" if args.apiAdmin else "false"} \
-                             --allowed-origins * \
-                             --concurrency 10 \
-                             --read-only false \
-                             --verbose true \
-                             --debug {"true" if args.apiServerDebug else "false"}\
-                             --http-port 8250 \
-                             --bind-addr all \
-                             --init-file /etc/opt/senzing/{ini_file_name.name + "_SzGo.json"}' \
-            if not args.apiServerCommand else args.apiServerCommand[0]
+        # Build the env vars for the REST API Server, build early to use in other functions
+        rest_api_env = [
+            f'SENZING_API_SERVER_ENABLE_ADMIN={"true" if args.apiAdmin else "false"}',
+            'SENZING_API_SERVER_ALLOWED_ORIGINS=*',
+            'SENZING_API_SERVER_CONCURRENCY=10',
+            'SENZING_API_SERVER_READ_ONLY=false',
+            f'SENZING_API_SERVER_DEBUG={"true" if args.apiServerDebug else "false"}',
+            'SENZING_API_SERVER_PORT=8250',
+            'SENZING_API_SERVER_BIND_ADDR=all',
+            f'SENZING_API_SERVER_INIT_FILE=/etc/opt/senzing/{ini_file_name.name + "_SzGo.json"}'
+        ]
 
-        # If still using the V2 API Server don't send the java command, will only work with Senzing V2 projects
-        # This can be removed when stable Docker images move over to API Server V3
-        if args.apiV2:
-            rest_api_command = rest_api_command.replace('java -jar senzing-api-server.jar', '').strip()
+        # Allow user to completely override the API Server env vars
+        if args.apiServerEnv:
+            rest_api_env = args.apiServerEnv
+
+        # Allow user to extend the API Server base env vars
+        if args.apiServerEnvExtend:
+            rest_api_env.extend(args.apiServerEnvExtend)
 
     # Attempt to get hostname and IP address, sleep if localhost and msg displayed within function(s)
-    print(f'\nCollecting networking information...')
     host_name, is_cloud = get_host_name()
     # Override hostname if specified
     if args.host:
@@ -1285,32 +1398,65 @@ def main():
     if host_name == 'localhost' or ip_addr == '127.0.0.1':
         sleep(3)
 
-    # Check Docker Docker is installed, sudo access?
-    docker_checks(SCRIPT_NAME)
-    docker_client = docker_init()
+    # TODO Don't do the docker check for things like update, info
+    # Check Docker is installed, sudo access?
+    if not args.update and not args.imagesList and not args.iniToJson and not args.iniToJsonPretty:
+        docker_checks(SCRIPT_NAME)
+        docker_client = docker_init(args.dockUrl)
+
+    # Update
+    if not args.update:
+        try:
+            if update_check():
+                logger('A new version of SenzingGo is available, to update: "./SenzingGo.py -u"', LogCats.INFO, msg_color=Colors.BLUE)
+        except (urllib.error.URLError, urllib.error.HTTPError, socket.timeout) as ex:
+            logger('Unable to check for update', LogCats.WARNING)
+            logger(ex, LogCats.WARNING)
+
+    if args.update:
+        try:
+            update(SENZING_ROOT)
+        except (urllib.error.URLError, urllib.error.HTTPError, socket.timeout) as ex:
+            logger('Unable to perform update', LogCats.ERROR)
+            logger(ex, LogCats.ERROR)
+            sys.exit(1)
+        else:
+            sys.exit(0)
 
     # Create Docker network if it doesn't exist
-    if not args.contStop and not args.contRemove and not args.contRemoveNoPrompt and not args.info \
-            and not args.logs and not hasattr(args, 'saveImages') and not args.loadImages and not args.imagesList:
+    if not args.contStop \
+       and not args.contRemove \
+       and not args.info \
+       and not args.logs \
+       and not hasattr(args, 'saveImages') \
+       and not args.loadImages \
+       and not args.imagesList:
         docker_net(docker_client, args.dockNet)
 
     # Set the project name and container names when projectSuffix is used, otherwise uses default from projectSuffix
     senzing_proj_name = args.projectSuffix if isinstance(args.projectSuffix, str) else args.projectSuffix[0]
-    docker_containers['restapi']['containername'] = f'SzGo-API-{senzing_proj_name}'
-    docker_containers['webapp']['containername'] = f'SzGo-WEB-{senzing_proj_name}'
-    docker_containers['swagger']['containername'] = f'SzGo-Swagger-{senzing_proj_name}'
+    docker_containers['REST API Server']['containername'] = f'SzGo-API-{senzing_proj_name}'
+    docker_containers['Web App Demo']['containername'] = f'SzGo-WEB-{senzing_proj_name}'
+    docker_containers['Swagger UI']['containername'] = f'SzGo-Swagger-{senzing_proj_name}'
+
+    # If the use of the stable Docker list is requested use it
+    docker_versions_url = DOCKER_STABLE_URL if args.stableDocker else DOCKER_LATEST_URL
+
+    # Check can reach net and access destinations of required resources?
+    access_versions = internet_access(docker_versions_url, check_msg=True)
+    access_dockerhub = internet_access(DOCKERHUB_URL)
+    if args.imagesList:
+        access_images_list = internet_access(DOCKER_IMAGE_NAMES)
 
     # Do clean up instead of deployment
-    if args.contStop or args.contRemove or args.contRemoveNoPrompt:
-        containers_stop_remove(senzing_proj_name, docker_client, docker_containers, args.contRemove,
-                               args.contRemoveNoPrompt, args.dockNet)
+    if args.contStop or args.contRemove:
+        containers_stop_remove(senzing_proj_name, docker_client, docker_containers, args.contRemove, args.dockNet)
         sys.exit(0)
 
     # Always stop and remove any existing containers if not performing a non-deploy option
     # Different args could be used between runs, want them to take effect with a new container instance
     if not hasattr(args, 'saveImages') and not args.loadImages and not args.info and not args.logs and not args.imagesList:
-        containers_stop_remove(senzing_proj_name, docker_client, docker_containers, args.contRemove,
-                               args.contRemoveNoPrompt, args.dockNet, startup_remove=True)
+        containers_stop_remove(senzing_proj_name, docker_client, docker_containers, args.contRemove, args.dockNet, startup_remove=True)
 
     # In deploying mode?
     if args.loadImages:
@@ -1319,7 +1465,7 @@ def main():
 
     # Show currently running container details and exit
     if args.info:
-        containers_info(docker_client, docker_containers, senzing_proj_name, host_name, rest_api_command)
+        containers_info(docker_client, docker_containers, senzing_proj_name, host_name, rest_api_env)
 
     # Show logs for a container, or set of containers if partial name string is supplied
     if args.logs:
@@ -1327,45 +1473,33 @@ def main():
 
     # Warn about mismatching versions of images when manually specifying a tag
     if args.apiTag or args.webAppTag or args.swaggerTag:
-        print(
-            f'\n{Colors.WARN}WARNING:{Colors.COLEND} Use with caution, unmatched image versions may cause incompatibilities and errors!\n')
+        logger('Use custom tags with caution, unmatched image versions may cause incompatibilities and errors!', LogCats.WARNING)
         sleep(5)
-
-    # If the use of the stable Docker list is requested use it
-    docker_versions_url = DOCKER_STABLE_URL if args.stableDocker else DOCKER_LATEST_URL
-
-    # Check can reach net and access destinations of required resources?
-    print('Checking for internet access and Senzing resources...', flush=True)
-    access_versions = internet_access(docker_versions_url)
-    access_dockerhub = internet_access(DOCKERHUB_URL)
-    if args.imagesList:
-        access_imagesList = internet_access(DOCKER_IMAGE_NAMES)
-    print('\n')
 
     # Try and fetch the latest docker image versions
     versions = parse_versions(docker_versions_url) if access_versions else {}
 
     # Add the current pinned version numbers from docker_versions_url to the dictionary if available, else use latest
-    docker_containers['restapi']['tag'] = versions[docker_containers['restapi']['latestsuffix']] if versions else 'latest'
-    docker_containers['webapp']['tag'] = versions[docker_containers['webapp']['latestsuffix']] if versions else 'latest'
-    docker_containers['swagger']['tag'] = versions[docker_containers['swagger']['latestsuffix']] if versions else 'latest'
+    docker_containers['REST API Server']['tag'] = versions[docker_containers['REST API Server']['latestsuffix']] if versions else 'latest'
+    docker_containers['Web App Demo']['tag'] = versions[docker_containers['Web App Demo']['latestsuffix']] if versions else 'latest'
+    docker_containers['Swagger UI']['tag'] = versions[docker_containers['Swagger UI']['latestsuffix']] if versions else 'latest'
 
     # If tags requested in CLI args override any previously discovered tags
     if args.apiTag:
-        docker_containers['restapi']['tag'] = args.apiTag
+        docker_containers['REST API Server']['tag'] = args.apiTag
     if args.webAppTag:
-        docker_containers['webapp']['tag'] = args.webAppTag
+        docker_containers['Web App Demo']['tag'] = args.webAppTag
     if args.swaggerTag:
-        docker_containers['swagger']['tag'] = args.swaggerTag
+        docker_containers['Swagger UI']['tag'] = args.swaggerTag
 
     # Package images to use on another system
     if hasattr(args, 'saveImages'):
-        save_images(docker_client, docker_containers, args.saveImages, args.saveImagesPath, access_dockerhub, args.noWebApp, args.noSwagger, args.forcePull)
+        save_images(docker_client, docker_containers, args.saveImages, args.saveImagesPath, access_dockerhub, args.noWebApp, args.noSwagger)
         sys.exit(0)
 
     # List images found on Senzing github
     if args.imagesList:
-        list_image_names(DOCKER_IMAGE_NAMES, access_imagesList, versions)
+        list_image_names(DOCKER_IMAGE_NAMES, access_images_list, versions)
         sys.exit(0)
 
     # Check if images exist already, add to dictionary for reference
@@ -1376,29 +1510,23 @@ def main():
         for image in i_list:
             avail_images.append(image.split(':')[0])
 
-    docker_containers['restapi']['imageavailable'] = True if docker_containers['restapi']['imagename'] in avail_images else False
-    docker_containers['webapp']['imageavailable'] = True if docker_containers['webapp']['imagename'] in avail_images else False
-    docker_containers['swagger']['imageavailable'] = True if docker_containers['swagger']['imagename'] in avail_images else False
+    docker_containers['REST API Server']['imageavailable'] = True if docker_containers['REST API Server']['imagename'] in avail_images else False
+    docker_containers['Web App Demo']['imageavailable'] = True if docker_containers['Web App Demo']['imagename'] in avail_images else False
+    docker_containers['Swagger UI']['imageavailable'] = True if docker_containers['Swagger UI']['imagename'] in avail_images else False
 
     # If can reach Docker Hub always try and pull images, otherwise detect if might be able to continue with installed local assets
-    if access_dockerhub:
-        pull_default_images(docker_client, docker_containers, args.noWebApp, args.noSwagger, args.forcePull)
-    else:
-        print(textwrap.dedent(f'''\n\
-            {Colors.WARN}WARNING:{Colors.COLEND} Cannot reach Senzing resources on the net, checking for available images...
-        '''))
+    if not access_dockerhub:
+        logger('Cannot reach Senzing resources on the net, checking for available images', cat=LogCats.WARNING)
 
         # Need at minimum the rest api container!
-        if not docker_containers['restapi']['imageavailable']:
-            print(
-                f'\n{Colors.ERROR}ERROR:{Colors.COLEND} Can\'t continue, can\'t access Docker Hub and no existing image for the REST API server is available\n')
+        if not docker_containers['REST API Server']['imageavailable']:
+            logger('Can\'t continue, can\'t access Docker Hub and no existing image for the REST API Server available', LogCats.ERROR)
             package_msg()
             sys.exit(1)
         else:
-            print(
-                f'\n{Colors.BLUE}INFO:{Colors.COLEND} Cannot access Docker Hub but a REST API server image is available to use (minimum requirement)...')
+            logger(f'Cannot access Docker Hub but a REST API server image is available to use (minimum requirement)')
 
-            # Find the newest tag for each available image and change the docker_containers['restapi']['tag'] for each image
+            # Find the newest tag for each available image and change the docker_containers['REST API Server']['tag'] for each image
             for k in docker_containers.keys():
                 # Only need to do this if an image is available
                 if docker_containers[k]["imageavailable"]:
@@ -1429,7 +1557,7 @@ def main():
         db2_check(args, SENZING_SUPPORT)
 
     if db_type == 'mssql':
-        print(f'\n{Colors.ERROR}ERROR:{Colors.COLEND} MSSQL databases are not supported currently')
+        logger('MSSQL databases are not supported currently', LogCats.ERROR)
         sys.exit(1)
 
     # Write INI parms to file, could use init-json string but less secure
@@ -1445,21 +1573,17 @@ def main():
             uid = pwd.getpwnam(os.getenv("SUDO_USER")).pw_uid
             gid = pwd.getpwnam(os.getenv("SUDO_USER")).pw_gid
             os.chown(ini_json_file, uid, gid)
-        except Exception as ex:
-            print(textwrap.dedent(f'''\n\
-                {Colors.ERROR}ERROR:{Colors.COLEND} Cannot change ownership on {ini_json_file}
-                        {ex}
-                '''))
+        except OSError as ex:
+            logger(f'Cannot change ownership on {ini_json_file}', LogCats.ERROR)
+            logger(ex, LogCats.ERROR)
             sys.exit(1)
 
     # Change permissions for user read and write
     try:
         os.chmod(ini_json_file, stat.S_IRUSR | stat.S_IWUSR)
     except OSError as ex:
-        print(textwrap.dedent(f'''\n\
-            {Colors.ERROR}ERROR:{Colors.COLEND} Cannot set permissions on {ini_json_file}
-                    {ex}
-                '''))
+        logger(f'Cannot set permissions on {ini_json_file}', LogCats.ERROR)
+        logger(ex, LogCats.ERROR)
         sys.exit(1)
 
     # REST Server - this is the minimum container to start, can be started without others
@@ -1481,88 +1605,80 @@ def main():
 
     disp_pack_msg = False
 
-    docker_run(docker_client,
-               docker_containers,
-               args.skipHealth,
-               # Docker module docs say can pass a list, doesn't work. Entrypoint for image already specifies the jar to launch
-               command=rest_api_command,
-               container='restapi',
-               detach=True,
-               # Set hostname for use by the web app env var SENZING_API_SERVER_URL
-               hostname=docker_containers['restapi']['containername'],
-               image=docker_containers['restapi']['imagename'] + ':' + docker_containers['restapi']['tag'],
-               name=docker_containers['restapi']['containername'],
-               network=args.dockNet,
-               # Order is: cont: host
-               ports={docker_containers['restapi']['containerport']: api_host_port},
-               remove=False,
-               tty=True,
-               # Get the ID of the user, this ensures the correct uid if starting as sudo --preserve-env
-               # The container uses this uid for files such as G2C.db and write operations
-               user=f'{pwd.getpwnam(os.getenv("SUDO_USER")).pw_uid if os.getenv("SUDO_USER", None) else pwd.getpwnam(os.getenv("USER")).pw_uid}',
-               volumes=api_volumes,
-               # See undocumented arg --apiServerCommand
-               environment=[
-                    f'SENZING_INIT_JSON={os.getenv("SENZING_INIT_JSON", "")}'
-               ]
-               )
+    # REST
+    run_args = [{
+        # Docker module docs say can pass a list, doesn't work. Entrypoint for image already specifies the jar to launch
+        "container": "REST API Server",
+        "detach": True,
+        "environment": rest_api_env,
+        # Set hostname for use by the web app env var SENZING_API_SERVER_URL
+        "hostname": docker_containers["REST API Server"]["containername"],
+        "image": docker_containers["REST API Server"]["imagename"] + ":" + docker_containers["REST API Server"]["tag"],
+        "labels": {"SzGoContKey": "REST API Server"},
+        "name": docker_containers["REST API Server"]["containername"],
+        "network": args.dockNet,
+        # Order is: cont: host
+        "ports": {docker_containers["REST API Server"]["containerport"]: api_host_port},
+        "remove": False,
+        "tty": True,
+        # Get the ID of the user, this ensures the correct uid if starting as sudo --preserve-env
+        # The container uses this uid for files such as G2C.db and write operations
+        "user": f'{pwd.getpwnam(os.getenv("SUDO_USER")).pw_uid if os.getenv("SUDO_USER", None) else pwd.getpwnam(os.getenv("USER")).pw_uid}',
+        "volumes": api_volumes,
+    }]
+
+    # Web App
+    web_app_host_port = args.webAppHostPort[0] if isinstance(args.webAppHostPort, list) else args.webAppHostPort
+
+    if not args.noWebApp:
+
+        run_args.append({
+                   "container": "Web App Demo",
+                   "detach": True,
+                   # Use Docker name of the container as the hostname - as per "docker inspect szgo-network"
+                   # Can't rely on the hostname reported by the OS here. This host name is used inside the
+                   # container and if the host name is localhost the entity search app tries to find the API
+                   # Server within itself
+                   "environment": [
+                       f'SENZING_API_SERVER_URL=http://{docker_containers["REST API Server"]["containername"]}:{docker_containers["REST API Server"]["containerport"]}',
+                       'SENZING_WEB_SERVER_PORT=8081'
+                   ],
+                   "image": docker_containers['Web App Demo']['imagename'] + ':' + docker_containers['Web App Demo']['tag'],
+                   "labels": {"SzGoContKey": "Web App Demo"},
+                   "name": docker_containers['Web App Demo']['containername'],
+                   "network": args.dockNet,
+                   "ports": {docker_containers['Web App Demo']['containerport']: web_app_host_port},
+                   "remove": False,
+                   "tty": True
+        })
+
+    pull_default_images(docker_client, docker_containers, args.noWebApp, args.noSwagger, args.waitHealth, run_args)
 
     # Try and get the API specification for Swagger, acts as test if it's up correctly too
-    print('\n\tFetching API specification from REST server', end='')
     api_spec = get_api_spec(f'http://{host_name}:{api_host_port}/{SZGO_REST_SPEC}')
-    print()
 
     # Dump the specification as JSON for Swagger from the rest server
     with open(f'{SENZING_ROOT}/var/{SZGO_REST_JSON}', 'w') as spec_file:
         # Only want the data section from the response - not the metadata
         json.dump(json.loads(api_spec)['data'], spec_file)
 
-    # Web App
-    web_app_host_port = args.webAppHostPort[0] if isinstance(args.webAppHostPort, list) else args.webAppHostPort
-
-    if not args.noWebApp and docker_containers['webapp']['imageavailable']:
-
-        docker_run(docker_client,
-                   docker_containers,
-                   args.skipHealth,
-                   container='webapp',
-                   detach=True,
-                   # Use Docker name of the container as the hostname - as per "docker inspect szgo-network"
-                   # Can't rely on the hostname reported by the OS here. This host name is used inside the
-                   # container and if the host name is localhost the entity search app tries to find the API
-                   # Server within itself
-                   environment=[
-                       f'SENZING_API_SERVER_URL=http://{docker_containers["restapi"]["containername"]}:{docker_containers["restapi"]["containerport"]}',
-                       'SENZING_WEB_SERVER_PORT=8081'
-                   ],
-                   image=docker_containers['webapp']['imagename'] + ':' + docker_containers['webapp']['tag'],
-                   name=docker_containers['webapp']['containername'],
-                   network=args.dockNet,
-                   ports={docker_containers['webapp']['containerport']: web_app_host_port},
-                   remove=False,
-                   tty=True
-                   )
-    else:
-        if not args.noWebApp:
-            print(
-                f'\n{Colors.WARN}WARNING:{Colors.COLEND} Can\'t access web resources and no existing Web App Docker image exists, can\'t start Web App container.')
-            disp_pack_msg = True
-
     # Swagger
+    # Run after API Server is up, the API spec is needed and read from the API Server
     swagger_host_port = args.swaggerHostPort[0] if isinstance(args.swaggerHostPort, list) else args.swaggerHostPort
 
-    if not args.noSwagger and docker_containers['swagger']['imageavailable']:
+    if not args.noSwagger and docker_containers['Swagger UI']['imageavailable']:
 
         docker_run(docker_client,
                    docker_containers,
-                   args.skipHealth,
-                   container='swagger',
+                   args.waitHealth,
+                   container='Swagger UI',
                    detach=True,
                    environment=[f'SWAGGER_JSON=/var/tmp/{SZGO_REST_JSON}'],
-                   image=docker_containers['swagger']['imagename'] + ':' + docker_containers['swagger']['tag'],
-                   name=docker_containers['swagger']['containername'],
+                   image=docker_containers['Swagger UI']['imagename'] + ':' + docker_containers['Swagger UI']['tag'],
+                   labels={"SzGoContKey": "Swagger UI"},
+                   name=docker_containers['Swagger UI']['containername'],
                    network=args.dockNet,
-                   ports={docker_containers['swagger']['containerport']: swagger_host_port},
+                   ports={docker_containers['Swagger UI']['containerport']: swagger_host_port},
                    remove=False,
                    tty=True,
                    volumes={f'{SENZING_VAR_PATH}/{SZGO_REST_JSON}': {'bind': f'/var/tmp/{SZGO_REST_JSON}', 'mode': 'ro'}}
@@ -1570,9 +1686,9 @@ def main():
 
     else:
         if not args.noSwagger:
-            print(
-                f'\n{Colors.WARN}WARNING:{Colors.COLEND} Can\'t access web resources and no existing Swagger Docker image exists, can\'t start Swagger container.')
+            logger('Can\'t access web resources or no existing Swagger Docker image exists, can\'t start Swagger container.', LogCats.WARNING, task='Swagger UI')
             disp_pack_msg = True
+            docker_containers['Swagger UI']['startedok'] = False
 
     if disp_pack_msg:
         package_msg()
@@ -1580,36 +1696,33 @@ def main():
     api_server_url = f'http://{host_name}:{api_host_port}'
     api_server_ip = f'http://{ip_addr}:{api_host_port}'
 
-    if not args.noWebApp and (docker_containers['webapp']['startedok'] or args.skipHealth):
+    if not args.noWebApp and docker_containers['Web App Demo']['startedok']:
         entity_search_url = f'http://{host_name}:{web_app_host_port}'
         entity_search_ip = f'http://{ip_addr}:{web_app_host_port}'
     else:
         entity_search_url = '--noWebApp (-nwa) used or an error occurred'
         entity_search_ip = Format.CURSOR_UP
 
-    if not args.noSwagger and (docker_containers['swagger']['startedok'] or args.skipHealth):
+    if not args.noSwagger and docker_containers['Swagger UI']['startedok']:
         swagger_url = f'http://{host_name}:{swagger_host_port}'
         swagger_ip = f'http://{ip_addr}:{swagger_host_port}'
     else:
         swagger_url = '--noSwagger (-nsw) used or an error occurred'
         swagger_ip = Format.CURSOR_UP
 
-    print(textwrap.dedent(f'''\n\n\
-        {Colors.BLUE}{Colors.BOLD}Resources
-        ---------{Colors.COLEND}
+    print(textwrap.dedent(f'''
         
-        {Colors.INFO + 'INFO:' + Colors.COLEND + ' Skip health check was specified, resources may not be immediately available.' + Format.NEWLINE if args.skipHealth else Format.CURSOR_UP}
-        REST API Server: {api_server_url}
+        {docker_containers['REST API Server']['msgcolor']}{Colors.BOLD}REST API Server:{Colors.END} {api_server_url}
                          {api_server_ip}
                          
-        Web App demo:    {entity_search_url}
+        {docker_containers['Web App Demo']['msgcolor']}{Colors.BOLD}Web App demo:{Colors.END}    {entity_search_url}
                          {entity_search_ip}
                          
-        Swagger GUI:     {swagger_url}
+        {docker_containers['Swagger UI']['msgcolor']}{Colors.BOLD}Swagger UI:{Colors.END}      {swagger_url}
                          {swagger_ip}
                          
-        {Colors.INFO + 'INFO:' + Colors.COLEND + ' Appear to be running on a cloud system, ensure access to resources and ports are open!'  + Format.NEWLINE if is_cloud else Format.CURSOR_UP}
-        {Colors.GREEN}Help:{Colors.COLEND} {SZGO_HELP}
+        {Colors.INFO + 'INFO:' + Colors.END + ' Appear to be running on a cloud system, ensure access to resources and ports are open!' + Format.NEWLINE if is_cloud else Format.CURSOR_UP}
+        {Colors.BLUE}{Colors.BOLD}Help:{Colors.END} {SZGO_HELP}
             '''))
 
 
