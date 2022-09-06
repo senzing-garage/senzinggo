@@ -1094,7 +1094,7 @@ def logger(msg,
            task='SenzingGo'):
     """ Basic logger """
 
-    cat = f'{Colors.DIM}{cat: <16}{Colors.END}' if cat.__contains__('INFO') else cat
+    cat = f'{Colors.DIM}{cat: <16}{Colors.END}' if 'INFO' in cat else cat
     msg_color = Colors.WARN if cat == LogCats.WARNING else msg_color
     msg_color = Colors.ERROR if cat == LogCats.ERROR else msg_color
 
