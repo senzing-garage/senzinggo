@@ -1,7 +1,5 @@
 #! /usr/bin/env python3
 
-# TODO Add self updater
-
 import argparse
 import concurrent.futures
 import configparser
@@ -1398,7 +1396,6 @@ def main():
     if host_name == 'localhost' or ip_addr == '127.0.0.1':
         sleep(3)
 
-    # TODO Don't do the docker check for things like update, info
     # Check Docker is installed, sudo access?
     if not args.update and not args.imagesList and not args.iniToJson and not args.iniToJsonPretty:
         docker_checks(SCRIPT_NAME)
