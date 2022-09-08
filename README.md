@@ -158,45 +158,7 @@ Upon execution the script will:
 4. Run the Docker images and instantiate running containers for the previously described assets
 5. Print URL information for each of the services provided by the Docker containers
 
-```
---> ./SenzingGo.py | sed -e 's/\x1b\[[0-9;]*m//g'
-INFO    | SenzingGo       | Collecting networking information...
-INFO    | SenzingGo       | Performing Docker checks...
-INFO    | SenzingGo       | Checking for an update...
-INFO    | SenzingGo       | Checking for internet access and Senzing resources...
-INFO    | SenzingGo       | https://raw.githubusercontent.com/Senzing/knowledge-base/main/lists/docker-versions-latest.sh Available
-INFO    | SenzingGo       | https://hub.docker.com/u/senzing/ Available
-INFO    | SenzingGo       | Looking for existing containers to remove
-INFO    | SenzingGo       | Checking and pulling Docker images, this may take many minutes
-INFO    | REST API Server | Pulling image senzing/senzing-api-server:3.3.4...
-INFO    | Web App Demo    | Pulling image senzing/entity-search-web-app:2.7.1...
-INFO    | Swagger UI      | Pulling image swaggerapi/swagger-ui:v4.13.2...
-INFO    | Swagger UI      | Downloaded newer image for swaggerapi/swagger-ui:v4.13.2
-INFO    | Web App Demo    | Downloaded newer image for senzing/entity-search-web-app:2.7.1
-INFO    | REST API Server | Downloaded newer image for senzing/senzing-api-server:3.3.4
-INFO    | REST API Server | Running...
-INFO    | Web App Demo    | Running...
-INFO    | REST API Server | Started
-INFO    | Web App Demo    | Started
-INFO    | SenzingGo       | Fetching API specification from REST server
-INFO    | SenzingGo       | Waiting for API specification from REST server, pausing for 5s before retry...
-INFO    | SenzingGo       | Waiting for API specification from REST server, pausing for 5s before retry...
-INFO    | Swagger UI      | Running...
-INFO    | Swagger UI      | Started
-
-
-REST API Server: http://ant76.anthome:8250
-                 http://192.168.1.108:8250
-
-Web App demo:    http://ant76.anthome:8251
-                 http://192.168.1.108:8251
-
-Swagger UI:      http://ant76.anthome:9180
-                 http://192.168.1.108:9180
-
-Help: https://github.com/Senzing/senzinggo
-
-```
+![SenzingGo Run](/docs/img/SenzingGoRun.png)
 
 Once complete, access to each of the services is available at the URL and port detailed at the end of the output. For example, in the above output the Senzing demo entity search application is accessible from a browser at http://ant76.anthome:8251.
 
@@ -249,42 +211,13 @@ When you no longer require the use of any of the services provided by the contai
 	- Stop any containers for the currently active Senzing project 
 - ```--contRemove```
 	- Stop any containers for the currently active Senzing project, and remove the containers
-- ```--contRemoveNoPrompt```
-	- Stop any containers for the currently active Senzing project, and remove the containers without prompting
 
 #### Information and Logs
 
 Upon completion of execution, SenzingGo displays information relating to the URL and port for each service. If this information is lost sight of from the terminal it can be recalled again by using the ```--info``` option. The info option displays the URL and port information along with other pertinent information for the running containers.
 
-```--> ./SenzingGo.py --info
-
-Performing Docker checks...
-
-
-Looking for containers matching 2_8_3-Release...
-
-Container: SzGo-Swagger-2_8_3-Release
-
-	Image:  swaggerapi/swagger-ui:v3.52.4
-	Status: running
-	URL:    http://ant76.anthome:9180
-
-Container: SzGo-WEB-2_8_3-Release
-
-	Image:  senzing/entity-search-web-app:2.3.3
-	Status: running
-	URL:    http://ant76.anthome:8251
-
-Container: SzGo-API-2_8_3-Release
-
-	Image:  senzing/senzing-api-server:2.7.5
-	Status: running
-	URL:    http://ant76.anthome:8250
-
-
-Command the REST API Server container is starting with:
-
-    --enable-admin false --allowed-origins * --concurrency 10 --read-only false --verbose true --http-port 8250 --bind-addr all --init-file /etc/opt/senzing/G2Module.ini_SzGo.json
+```
+![SenzingGo Info](/docs/img/MultiInstance.png)
 ```
 
 The ```--logs``` option is used to display each of the logs for currently running containers started by SenzingGo. This can be useful in helping determine problems with starting the containers and will be of use to Senzing support:
