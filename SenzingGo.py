@@ -30,9 +30,9 @@ except ImportError:
     sys.exit(1)
 
 __all__ = []
-__version__ = '1.6.0'  # See https://www.python.org/dev/peps/pep-0396/
+__version__ = '1.6.1'  # See https://www.python.org/dev/peps/pep-0396/
 __date__ = '2021-09-10'
-__updated__ = '2022-09-06'
+__updated__ = '2022-09-08'
 
 
 class Colors:
@@ -86,17 +86,17 @@ def update_check_and_get():
     except ValueError:
         logger(f'Either the version of this script {__version__} or the released version {rel_ver} don\'t contain all digits', LogCats.ERROR)
         logger('Cannot check if a new update is available or perform an update', LogCats.ERROR)
-        return None, None
+        return None, None, None, None
     else:
         if len(test_this) < 3 or len(test_rel) < 3:
             logger(f'Either the version of this script {__version__} or the released version {rel_ver} are not formatted as expected', LogCats.ERROR)
             logger('Cannot check if a new update is available or perform an update', LogCats.ERROR)
-            return None, None
+            return None, None, None, None
 
     this_ver_concat = int(test_this)
     rel_ver_concat = int(test_rel)
 
-    return this_ver_concat, rel_ver_concat
+    return this_ver_concat, rel_ver_concat, __version__, rel_ver
 
 
 def update_check():
@@ -104,11 +104,12 @@ def update_check():
 
     logger('Checking for an update...')
 
-    this_ver, rel_ver = update_check_and_get()
-    if not this_ver and not rel_ver:
+    this_ver_int, rel_ver_int, this_ver, rel_ver = update_check_and_get()
+    logger(f'Current version: {this_ver} - Available version: {rel_ver}', LogCats.INFO)
+    if not this_ver_int and not rel_ver_int:
         return
 
-    if this_ver < rel_ver:
+    if this_ver_int < rel_ver_int:
         return True
 
     return False
@@ -117,7 +118,7 @@ def update_check():
 def update(senz_root):
     """ Perform an update """
 
-    _, rel_ver = update_check_and_get()
+    _, rel_ver, _, _ = update_check_and_get()
     if not rel_ver:
         return
 
@@ -419,15 +420,16 @@ def pull_default_images(docker_client, docker_containers, no_web_app, no_swagger
                 docker_containers[key]['imagepulled'] = True
                 docker_containers[key]['imageavailable'] = True
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor2:
-        future_run = {executor2.submit(docker_run, docker_client, docker_containers, check_health, **parms): parms for parms in dock_run_args}
-        for future in concurrent.futures.as_completed(future_run):
-            pull_success = future_run[future]
-            try:
-                _ = future.result()
-            except docker.errors.DockerException as ex:
-                logger(ex, cat=LogCats.ERROR, task_color=docker_containers[dock_run_args[0]['container']]['msgcolor'], task=pull_success[0])
-                sys.exit(1)
+    if dock_run_args:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor2:
+            future_run = {executor2.submit(docker_run, docker_client, docker_containers, check_health, **parms): parms for parms in dock_run_args}
+            for future in concurrent.futures.as_completed(future_run):
+                pull_success = future_run[future]
+                try:
+                    _ = future.result()
+                except docker.errors.DockerException as ex:
+                    logger(ex, cat=LogCats.ERROR, task_color=docker_containers[dock_run_args[0]['container']]['msgcolor'], task=pull_success[0])
+                    sys.exit(1)
 
 
 def docker_pull(docker_client, image, msg_color=Colors.DEFAULT, task_color=Colors.BLUE, key='SenzingGo'):
@@ -1412,7 +1414,10 @@ def main():
 
     if args.update:
         try:
-            update(SENZING_ROOT)
+            if update_check():
+                update(SENZING_ROOT)
+            else:
+                logger('Up to date or couldn\'t complete update checks', LogCats.INFO, msg_color=Colors.BLUE)
         except (urllib.error.URLError, urllib.error.HTTPError, socket.timeout) as ex:
             logger('Unable to perform update', LogCats.ERROR)
             logger(ex, LogCats.ERROR)
