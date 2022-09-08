@@ -68,25 +68,13 @@ SenzingGo is not intended for production use, it does not provide authentication
 
 ### Installation
 
-SenzingGo will be included in V3 of the Senzing APIs. In the meantime:
-1. Download SenzingGo.py and place it in the python directory of your Senzing API project
-2. Add execute permission to SenzingGo.py
-    ```console
-    cd <project_path>/python
-    chmod +x SenzingGo.py
-    ```
-
-4. As usual, ensure you have sourced the setupEnv file for your Senzing API project to set the Senzing environment
-
-    ```console
-    source <project_path>/setupEnv
-    ```
+SenzingGo is included in V3+ of the Senzing APIs.
 
 ### Usage Overview
 
 ```console
- usage: SenzingGo.py [-h] [-c INIFILE] [-ap PORT] [-wp PORT] [-sp PORT] [-nwa] [-nsw] [-s | -r | -rn] [-i] [-l [STRING]] [-si [IMAGE [IMAGE ...]]] [-sip PATH] [-li FILE] [-aa] [-n [NAME]] [-ho [HOST]]
-                    [-ps SUFFIX] [-db2c DB2CLIPATH]
+usage: SenzingGo.py [-h] [-c INIFILE] [-ap PORT] [-wp PORT] [-sp PORT] [-nwa] [-nsw] [-s | -r] [-i] [-l [STRING]] [-si [IMAGE [IMAGE ...]]] [-sip PATH] [-li FILE] [-aa] [-n [NAME]]
+                    [-du URL] [-ho [HOST]] [-ps SUFFIX] [-db2c DB2CLIPATH] [-wh] [-u]
 
 Utility to rapidly deploy Docker containers for REST API server, Entity Search App and Swagger UI
 
@@ -110,12 +98,9 @@ optional arguments:
                         
   -nsw, --noSwagger     Don't deploy the Swagger UI
                         
-  -s, --contStop        Stop any Docker containers named *2_8_3-Release
+  -s, --contStop        Stop any Docker containers named *3_2_0_22234
                         
-  -r, --contRemove      Stop and remove any Docker containers named *2_8_3-Release
-                        
-  -rn, --contRemoveNoPrompt
-                        Stop and remove any Docker containers named *2_8_3-Release without prompting
+  -r, --contRemove      Stop and remove any Docker containers named *3_2_0_22234
                         
   -i, --info            Display info for running containers for this project
                         
@@ -128,7 +113,7 @@ optional arguments:
                         Unless instructed by Senzing support no arguments are required.
                         
   -sip PATH, --saveImagesPath PATH
-                        Path for saving a Docker images package to, default=/home/ant/senzprojs/2_8_3-Release/var
+                        Path for saving a Docker images package to, default=/home/ant/senzprojs/3.2.0.22234/var
                         
   -li FILE, --loadImages FILE
                         File to load SenzingGo Docker images from to this machine, e.g. air gapped systems
@@ -138,14 +123,21 @@ optional arguments:
   -n [NAME], --dockNet [NAME]
                         Name of a Docker network to create or use, default=szgo-network
                         
+  -du URL, --dockUrl URL
+                        URL for Docker server, default=unix://var/run/docker.sock
+                        
   -ho [HOST], --host [HOST]
-                        Hostname or IP address, only use if tool can't determine correctly, default=ant76
+                        Hostname, only use if tool can't determine correctly
                         
   -ps SUFFIX, --projectSuffix SUFFIX
-                        Suffix to use for container names, default=2_8_3-Release
+                        Suffix to use for container names, default=3_2_0_22234
                         
   -db2c DB2CLIPATH, --db2CliPath DB2CLIPATH
                         Path to Db2 client CLI driver when using a Db2 database as the Senzing repository
+                        
+  -wh, --waitHealth     Wait for health checking on containers starting, use if errors are reported during a run
+                        
+  -u, --update          Update check
 
 ```
 
@@ -161,65 +153,49 @@ Upon execution the script will:
 
 1. Perform checks to ensure Docker is installed and the current user has privileges to execute Docker commands
 2. Check for the latest versions of Docker images utilized
+3. Check if there are updates to SenzingGo
 3. Pull the required Docker images (if not already locally available)
 4. Run the Docker images and instantiate running containers for the previously described assets
 5. Print URL information for each of the services provided by the Docker containers
 
 ```
--> ./SenzingGo.py 
+--> ./SenzingGo.py | sed -e 's/\x1b\[[0-9;]*m//g'
+INFO    | SenzingGo       | Collecting networking information...
+INFO    | SenzingGo       | Performing Docker checks...
+INFO    | SenzingGo       | Checking for an update...
+INFO    | SenzingGo       | Checking for internet access and Senzing resources...
+INFO    | SenzingGo       | https://raw.githubusercontent.com/Senzing/knowledge-base/main/lists/docker-versions-latest.sh Available
+INFO    | SenzingGo       | https://hub.docker.com/u/senzing/ Available
+INFO    | SenzingGo       | Looking for existing containers to remove
+INFO    | SenzingGo       | Checking and pulling Docker images, this may take many minutes
+INFO    | REST API Server | Pulling image senzing/senzing-api-server:3.3.4...
+INFO    | Web App Demo    | Pulling image senzing/entity-search-web-app:2.7.1...
+INFO    | Swagger UI      | Pulling image swaggerapi/swagger-ui:v4.13.2...
+INFO    | Swagger UI      | Downloaded newer image for swaggerapi/swagger-ui:v4.13.2
+INFO    | Web App Demo    | Downloaded newer image for senzing/entity-search-web-app:2.7.1
+INFO    | REST API Server | Downloaded newer image for senzing/senzing-api-server:3.3.4
+INFO    | REST API Server | Running...
+INFO    | Web App Demo    | Running...
+INFO    | REST API Server | Started
+INFO    | Web App Demo    | Started
+INFO    | SenzingGo       | Fetching API specification from REST server
+INFO    | SenzingGo       | Waiting for API specification from REST server, pausing for 5s before retry...
+INFO    | SenzingGo       | Waiting for API specification from REST server, pausing for 5s before retry...
+INFO    | Swagger UI      | Running...
+INFO    | Swagger UI      | Started
 
-Performing Docker checks...
-
-Docker network szgo-network doesn't exist, creating...
-
-Looking for existing containers to remove...
-
-Checking for internet access and Senzing resources...
-
-	https://raw.githubusercontent.com/Senzing/knowledge-base/main/lists/docker-versions-latest.sh Available
-	https://hub.docker.com/u/senzing/ Available
-
-
-Checking and pulling Docker images, this may take many minutes...
-
-
-	Pulling senzing/senzing-api-server:2.7.5...
-
-	Pulling senzing/entity-search-web-app:2.3.3...
-
-	Pulling swaggerapi/swagger-ui:v3.52.4...
-
-Running senzing/senzing-api-server:2.7.5...
-
-	Waiting for container to start.
-	Waiting for container to become healthy.......
-
-	Fetching API specification from REST server
-
-Running senzing/entity-search-web-app:2.3.3...
-
-	Waiting for container to start.
-	This container doesn't report health
-	Use the command "docker logs SzGo-WEB-2_8_3-Release" to check status if issues arise 
-
-Running swaggerapi/swagger-ui:v3.52.4...
-
-	Waiting for container to start.
-	This container doesn't report health
-	Use the command "docker logs SzGo-Swagger-2_8_3-Release" to check status if issues arise 
-
-
-Resources
----------
 
 REST API Server: http://ant76.anthome:8250
+                 http://192.168.1.108:8250
+
 Web App demo:    http://ant76.anthome:8251
-Swagger GUI:     http://ant76.anthome:9180
+                 http://192.168.1.108:8251
+
+Swagger UI:      http://ant76.anthome:9180
+                 http://192.168.1.108:9180
 
 Help: https://github.com/Senzing/senzinggo
 
-~/senzprojs/2_8_3-Release/python 
-->
 ```
 
 Once complete, access to each of the services is available at the URL and port detailed at the end of the output. For example, in the above output the Senzing demo entity search application is accessible from a browser at http://ant76.anthome:8251.
