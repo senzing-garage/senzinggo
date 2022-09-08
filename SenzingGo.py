@@ -118,7 +118,7 @@ def update_check():
 def update(senz_root):
     """ Perform an update """
 
-    _, rel_ver = update_check_and_get()
+    _, rel_ver, _, _ = update_check_and_get()
     if not rel_ver:
         return
 
