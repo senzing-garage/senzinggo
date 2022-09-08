@@ -86,12 +86,12 @@ def update_check_and_get():
     except ValueError:
         logger(f'Either the version of this script {__version__} or the released version {rel_ver} don\'t contain all digits', LogCats.ERROR)
         logger('Cannot check if a new update is available or perform an update', LogCats.ERROR)
-        return None, None
+        return None, None, None, None
     else:
         if len(test_this) < 3 or len(test_rel) < 3:
             logger(f'Either the version of this script {__version__} or the released version {rel_ver} are not formatted as expected', LogCats.ERROR)
             logger('Cannot check if a new update is available or perform an update', LogCats.ERROR)
-            return None, None
+            return None, None, None, None
 
     this_ver_concat = int(test_this)
     rel_ver_concat = int(test_rel)
