@@ -73,7 +73,7 @@ class Format:
 def update_check_and_get():
     """ Check version numbers """
 
-    with urllib.request.urlopen("https://api.github.com/repos/senzing/SenzingGo/releases/latest") as rel_response:
+    with urllib.request.urlopen("https://api.github.com/repos/senzing/SenzingGo/releases/latest", timeout=5) as rel_response:
         rel_ver = json.loads(rel_response.read())['name']
 
     # Senzing follows release versions of x.y.z
