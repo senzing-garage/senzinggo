@@ -1325,10 +1325,18 @@ def main():
 
     # Undocumented args - usage with guidance from Senzing support
     szgo_parser.add_argument('-il', '--imagesList', default=False, action='store_true', help=argparse.SUPPRESS)
-    # ./SenzingGo.py -ae SENZING_API_SERVER_ENABLE_ADMIN=false SENZING_API_SERVER_ALLOWED_ORIGINS=* SENZING_API_SERVER_CONCURRENCY=10 SENZING_API_SERVER_READ_ONLY=false SENZING_API_SERVER_DEBUG=false SENZING_API_SERVER_PORT=8250 SENZING_API_SERVER_BIND_ADDR=all SENZING_API_SERVER_INIT_FILE=/etc/opt/senzing/G2Module.ini_SzGo.json
-    szgo_parser.add_argument('-ae', '--apiServerEnv', action='extend', default=None, help=argparse.SUPPRESS, nargs='+')
-    # ./SenzingGo.py -ae SENZING_API_SERVER_QUIET=true
-    szgo_parser.add_argument('-aex', '--apiServerEnvExtend', action='extend', default=None, help=argparse.SUPPRESS, nargs='+')
+
+    # Python version 3.8+ is required to use --apiServerEnv or --apiServerEnvExtend. They are ignored.
+    extend_env = True
+    if sys.version_info[0] >= 3 and sys.version_info[1] >= 8:
+
+        # ./SenzingGo.py -ae SENZING_API_SERVER_ENABLE_ADMIN=false SENZING_API_SERVER_ALLOWED_ORIGINS=* SENZING_API_SERVER_CONCURRENCY=10 SENZING_API_SERVER_READ_ONLY=false SENZING_API_SERVER_DEBUG=false SENZING_API_SERVER_PORT=8250 SENZING_API_SERVER_BIND_ADDR=all SENZING_API_SERVER_INIT_FILE=/etc/opt/senzing/G2Module.ini_SzGo.json
+        szgo_parser.add_argument('-ae', '--apiServerEnv', action='extend', default=None, help=argparse.SUPPRESS, nargs='+')
+        # ./SenzingGo.py -ae SENZING_API_SERVER_QUIET=true
+        szgo_parser.add_argument('-aex', '--apiServerEnvExtend', action='extend', default=None, help=argparse.SUPPRESS, nargs='+')
+    else:
+        extend_env = False
+
     szgo_parser.add_argument('-ad', '--apiServerDebug', default=False, action='store_true', help=argparse.SUPPRESS)
     szgo_parser.add_argument('-at', '--apiTag', type=str, default=None, help=argparse.SUPPRESS, nargs='?')
     szgo_parser.add_argument('-wt', '--webAppTag', type=str, default=None, help=argparse.SUPPRESS, nargs='?')
@@ -1339,6 +1347,9 @@ def main():
     szgo_parser.add_argument('-sd', '--stableDocker', default=False, action='store_true', help=argparse.SUPPRESS)
 
     args = szgo_parser.parse_args()
+
+    if not extend_env:
+        args.apiServerEnv = args.apiServerEnvExtend = None
 
     # Warning message printed by get_senzing_root(), if SENZING_ROOT isn't set only allow
     # save / load images mode (and non-documented images list)
