@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 [markdownlint](https://dlaa.me/markdownlint/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.3] - 2022-10-31
+
+### Changed in 1.6.3
+
+- Fix an issue parsing CLI arguments on Python version < 3.8
+
 ## [1.6.2] - 2022-09-13
 
 ### Changed in 1.6.2
