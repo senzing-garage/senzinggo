@@ -30,9 +30,9 @@ except ImportError:
     sys.exit(1)
 
 __all__ = []
-__version__ = '1.6.4'  # See https://www.python.org/dev/peps/pep-0396/
+__version__ = '1.6.5'  # See https://www.python.org/dev/peps/pep-0396/
 __date__ = '2021-09-10'
-__updated__ = '2022-12-02'
+__updated__ = '2023-01-10'
 
 
 class Colors:
