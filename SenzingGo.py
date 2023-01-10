@@ -30,9 +30,9 @@ except ImportError:
     sys.exit(1)
 
 __all__ = []
-__version__ = '1.6.4'  # See https://www.python.org/dev/peps/pep-0396/
+__version__ = '1.6.5'  # See https://www.python.org/dev/peps/pep-0396/
 __date__ = '2021-09-10'
-__updated__ = '2022-12-02'
+__updated__ = '2023-01-10'
 
 
 class Colors:
@@ -925,12 +925,12 @@ def patch_ini_json(ini_json):
         return str(conn_str_path)
 
     # Correct ini parms for inside container and volume args on docker run command(s)
-    ini_json['PIPELINE']['supportpath'] = '/opt/senzing/data'
-    ini_json['PIPELINE']['configpath'] = '/etc/opt/senzing'
-    del ini_json['PIPELINE']['resourcepath']
+    ini_json['PIPELINE']['SUPPORTPATH'] = '/opt/senzing/data'
+    ini_json['PIPELINE']['CONFIGPATH'] = '/etc/opt/senzing'
+    del ini_json['PIPELINE']['RESOURCEPATH']
 
     # Get the base connection string regardless of clustered mode or not
-    base_conn_str = ini_json['SQL']['connection']
+    base_conn_str = ini_json['SQL']['CONNECTION']
 
     dbtype, connection = type_connection_split(base_conn_str)
 
@@ -938,7 +938,7 @@ def patch_ini_json(ini_json):
 
         # If a cluster check each sqlite db file is in the same path, needed for mounting into Docker API server container
         # This tool doesn't support each db file in different locations
-        if ini_json['SQL'].get('backend', None) and ini_json['SQL']['backend'].lower() == 'hybrid':
+        if ini_json['SQL'].get('BACKEND', None) and ini_json['SQL']['BACKEND'].lower() == 'hybrid':
 
             # Get the unique set of cluster keys used in the ini [HYBRID] section, e.g. C1, C2
             cluster_keys = [ini_json['HYBRID'][cluster_key] for cluster_key in ini_json['HYBRID']]
@@ -946,7 +946,12 @@ def patch_ini_json(ini_json):
 
             # Get all the connection strings for each cluster key detected in [HYBRID], add base connection too
             # e.g. sqlite3://na:na@/home/ant/senzprojs/2_7_0-Release/var/sqlite/G2_RES.db
-            cluster_conn_strs = [ini_json[cluster_key]['db_1'] for cluster_key in unique_cluster_keys]
+            try:
+                cluster_conn_strs = [ini_json[cluster_key]['DB_1'] for cluster_key in unique_cluster_keys]
+            except KeyError:
+                logger('Couldn\'t locate DB path key DB_1 in the engine init parameters, please use the key DB_1 for the DB URL values', LogCats.ERROR)
+                logger('e.g., "SQL": {"BACKEND": "HYBRID", "CONNECTION": "sqlite3://na:na@/senzproj/var/sqlite/G2C.db"}, "C1": {"CLUSTER_SIZE": "1", "DB_1": "sqlite3://na:na@/senzproj/var/sqlite/G2C_RES.db"},...', LogCats.ERROR)
+                sys.exit(1)
             cluster_conn_strs.append(base_conn_str)
 
             # Get the path without the database file name for each connection string
