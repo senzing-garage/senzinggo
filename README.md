@@ -27,6 +27,7 @@ SenzingGo is not intended for production use, it does not provide authentication
 3. [Usage Overview](#usage-overview)
 4. [Usage](#usage)
 5. [Options](#options)
+	1. [Docker Networking](#docker-networking)
 	1. [Specifying Ports](#specifying-ports)
 	1. [Starting Specific Containers](#starting-specific-containers)
 	1. [Cleaning Up Containers](#cleaning-up-containers)
