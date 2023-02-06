@@ -30,9 +30,9 @@ except ImportError:
     sys.exit(1)
 
 __all__ = []
-__version__ = '1.6.5'  # See https://www.python.org/dev/peps/pep-0396/
+__version__ = '1.6.6'  # See https://www.python.org/dev/peps/pep-0396/
 __date__ = '2021-09-10'
-__updated__ = '2023-01-10'
+__updated__ = '2023-02-06'
 
 
 class Colors:
@@ -243,7 +243,7 @@ def convert_ini2json(ini_file_name):
 
     ini_json = {}
 
-    cfgp = configparser.ConfigParser()
+    cfgp = configparser.ConfigParser(empty_lines_in_values=False, interpolation=None)
     cfgp.optionxform = str
     cfgp.read(ini_file_name)
 
@@ -1289,7 +1289,7 @@ def main():
 
     szgo_parser.add_argument('-n', '--dockNet', type=str, default='szgo-network', nargs='?', metavar='NAME',
                              help=textwrap.dedent('''\
-                                Name of a Docker network to create or use, default=%(default)s
+                                Name of a Docker network to use, default=%(default)s
 
                                 '''))
 
