@@ -2,7 +2,7 @@
 
 ## QuickStart
 
-Follow the [Senzing Quickstart](https://senzing.zendesk.com/hc/en-us/articles/115001579954-API-Quickstart-Roadmap), from the same shell within the project directory:
+SenzingGo is included in a bare metal install from V3. Follow the [Senzing Quickstart](https://senzing.zendesk.com/hc/en-us/articles/115001579954-API-Quickstart-Roadmap), from the same shell within the project directory:
 
 ```
 python3 -m pip install docker
