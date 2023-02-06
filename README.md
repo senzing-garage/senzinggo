@@ -2,15 +2,10 @@
 
 ## QuickStart
 
-**Note:** As of Senzing V3, SenzingGo is included in the product installation and doesn't need to be downloaded as outlined below.
-
-Follow the [Senzing Quickstart](https://senzing.zendesk.com/hc/en-us/articles/115001579954-API-Quickstart-Roadmap),  from the same shell within the project directory:
+Follow the [Senzing Quickstart](https://senzing.zendesk.com/hc/en-us/articles/115001579954-API-Quickstart-Roadmap), from the same shell within the project directory:
 
 ```
 python3 -m pip install docker
-wget -O python/SenzingGo.py https://raw.githubusercontent.com/Senzing/senzinggo/main/SenzingGo.py
-chmod +x python/SenzingGo.py
-
 ./python/SenzingGo.py
 ```
 
@@ -23,7 +18,7 @@ The SenzingGo utility provides rapid deployment of the following Docker containe
 
 SenzingGo is intended to be easy to use and deploy resources quickly to aid in getting started with the Senzing APIs; without requiring Docker skills. Due to its rapid deployment and ease of use, it is targeted at testing, development and education. 
 
-SenzingGo is not intended for production use, it does not provide authentication or secure transport of communications. Such topics are outside the intended use and scope of SenzingGo.
+SenzingGo is not intended for production use, it does not provide authentication or secure transport of communications. Such topics are outside the intended scope of SenzingGo.
 
 ### Contents
 
@@ -171,6 +166,22 @@ Upon startup, and if an internet connection is available, SenzingGo will check f
 There is another use case where it is useful for SeningGo to be able to run offline: air gaped systems. In this use case SenzingGo can be used on an internet connected machine to package the required Docker images together. This package can be moved to an air gapped system where SenzingGo can deploy the Docker images for use without needing to pull them directly from the internet, see [Packaging and Deploying the Docker Images](#packaging-and-deploying-the-docker-images)
 
 ### Options
+
+#### Docker Networking
+
+If you have set ```"userland-proxy": false``` in your Docker configuration file (/etc/docker/daemon.json) and your Senzing database is also using a Docker container, SenzingGo will fail with connection issues. SenzingGo uses a network (the deafult is szgo-network) for the containers it starts. Your database container will not be using the same network. 
+
+To start the database container in the default SenzingGo network:
+```console
+docker run --net szgo-network ...
+```
+
+The other option is if your database container is specifying a Docker network to use, instruct SenzingGo to use that network instead: 
+```console
+./SenzingGo.py -n <netwrok_name>
+```
+
+Note, the containers cannot use the default Docker bridge network or they cannot discover each other by service name; this is by design for this network.
 
 #### Specifying Ports
 
