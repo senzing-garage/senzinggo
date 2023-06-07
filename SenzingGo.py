@@ -1115,6 +1115,7 @@ def logger(msg,
 
 
 def main():
+    """ """
 
     if os.getenv("SENZING_ENGINE_CONFIGURATION_JSON"):
         logger('SENZING_ENGINE_CONFIGURATION_JSON is set, SenzingGo doesn\'t support it', LogCats.WARNING)
