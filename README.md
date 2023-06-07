@@ -60,7 +60,7 @@ SenzingGo is not intended for production use, it does not provide authentication
 
 :warning: Recent versions of Red Hat systems use Podman in place of Docker. Podman is not currently supported, see the Docker link above for installation of Docker if you don't rely on Podman.
 
-:warning: MS SQL Server is currently not supported as a Senzing repository when using SenzingGo, please contact [support](https://senzing.zendesk.com/hc/en-us/requests/new) if this is a requirement. 
+:warning: MS SQL Server and Oracle are currently not supported as a Senzing repository when using SenzingGo, please contact [support](https://senzing.zendesk.com/hc/en-us/requests/new) if this is a requirement. 
 
 ### Installation
 
