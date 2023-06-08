@@ -30,9 +30,9 @@ except ImportError:
     sys.exit(1)
 
 __all__ = []
-__version__ = '1.6.6'  # See https://www.python.org/dev/peps/pep-0396/
+__version__ = '1.6.7'  # See https://www.python.org/dev/peps/pep-0396/
 __date__ = '2021-09-10'
-__updated__ = '2023-02-06'
+__updated__ = '2023-06-07'
 
 
 class Colors:
@@ -146,9 +146,9 @@ def get_senzing_root(script_name):
         if os.geteuid() == 0:
             logger(f'Running with sudo and SENZING_ROOT isn\'t set. Ensure setupEnv file is sourced and run with "sudo --preserve-env ./{script_name}"', LogCats.WARNING)
         else:
-            logger(f'SENZING_ROOT isn\'t set please source the project setupEnv file to use all features', LogCats.WARNING)
+            logger('SENZING_ROOT isn\'t set please source the project setupEnv file to use all features', LogCats.WARNING)
 
-        logger(f'Without SENZING_ROOT set, only --saveImages (-si) and --loadImages modes are available')
+        logger('Without SENZING_ROOT set, only --saveImages (-si) and --loadImages modes are available')
 
     return senz_root
 
@@ -929,13 +929,21 @@ def patch_ini_json(ini_json):
     ini_json['PIPELINE']['CONFIGPATH'] = '/etc/opt/senzing'
     del ini_json['PIPELINE']['RESOURCEPATH']
 
+    # Detect if LICENSEFILE is set in ini parms and modify for inside container
+    try:
+        lic_file = ini_json['PIPELINE']['LICENSEFILE']
+        if lic_file:
+            lic_file_name = Path(lic_file).name
+            ini_json['PIPELINE']['LICENSEFILE'] = f'/etc/opt/senzing/{lic_file_name}'
+    except KeyError:
+        lic_file = None
+
     # Get the base connection string regardless of clustered mode or not
     base_conn_str = ini_json['SQL']['CONNECTION']
 
     dbtype, connection = type_connection_split(base_conn_str)
 
     if dbtype.lower() == 'sqlite3':
-
         # If a cluster check each sqlite db file is in the same path, needed for mounting into Docker API server container
         # This tool doesn't support each db file in different locations
         if ini_json['SQL'].get('BACKEND', None) and ini_json['SQL']['BACKEND'].lower() == 'hybrid':
@@ -979,11 +987,10 @@ def patch_ini_json(ini_json):
         # Build the values to use in the volume argument for the mount to return
         mount_in_cont = [host_path_for_volume, {"bind": "/var/opt/senzing", "mode": "rw"}]
 
-        return dbtype, ini_json_patched, mount_in_cont
+        return dbtype, ini_json_patched, mount_in_cont, lic_file
 
     # If not sqlite return the patched ini_json without meddling with connection strings
-    return dbtype, ini_json, None
-
+    return dbtype, ini_json, None, lic_file
 
 def mysql_check(senzing_root, lib_my_sql, db_type, senzing_support):
     """ Checks for MySql """
@@ -1110,6 +1117,13 @@ def logger(msg,
 def main():
     """ """
 
+    if os.getenv("SENZING_ENGINE_CONFIGURATION_JSON"):
+        logger('SENZING_ENGINE_CONFIGURATION_JSON is set, SenzingGo doesn\'t support it', LogCats.WARNING)
+        logger('Running with G2Module.ini configuration instead, set G2Module.ini to the', LogCats.WARNING)
+        logger('values in SENZING_ENGINE_CONFIGURATION_JSON if they differ and you wish', LogCats.WARNING)
+        logger('to use them', LogCats.WARNING)
+        sleep(3)
+
     SCRIPT_NAME = Path(__file__).name
     SCRIPT_STEM = Path(__file__).stem
 
@@ -1195,7 +1209,6 @@ def main():
 
                                             Additional information: {SZGO_HELP}
                                             '''))
-
     szgo_parser.add_argument('-c', '--iniFile', default=None, nargs=1,
                              help=textwrap.dedent('''\
                                 Path and file name of optional G2Module.ini to use.
@@ -1306,7 +1319,7 @@ def main():
                                 '''))
 
     szgo_parser.add_argument('-ps', '--projectSuffix', type=str, default=senzing_proj_name, nargs=1, metavar='SUFFIX',
-                             help=textwrap.dedent(f'''\
+                             help=textwrap.dedent('''\
                                 Suffix to use for container names, default=%(default)s
 
                                 '''))
@@ -1367,8 +1380,9 @@ def main():
 
         # Import G2Paths after the get_senzing_root() check. G2Paths checks for SENZING_ROOT and exits if not set
         import G2Paths
-        ini_file_name = pathlib.Path(G2Paths.get_G2Module_ini_path()) if not args.iniFile else pathlib.Path(
-            args.iniFile[0]).resolve()
+        ini_file_name = pathlib.Path(G2Paths.get_G2Module_ini_path()) \
+            if not args.iniFile \
+            else pathlib.Path(args.iniFile[0]).resolve()
         G2Paths.check_file_exists_and_readable(ini_file_name)
 
         # Check ini file isn't using localhost for connection strings which won't work from within container
@@ -1420,6 +1434,19 @@ def main():
         docker_checks(SCRIPT_NAME)
         docker_client = docker_init(args.dockUrl)
 
+    # Create Docker network if it doesn't exist
+    if not args.contStop \
+       and not args.contRemove \
+       and not args.info \
+       and not args.logs \
+       and not hasattr(args, 'saveImages') \
+       and not args.loadImages \
+       and not args.iniToJson \
+       and not args.iniToJsonPretty \
+       and not args.update \
+       and not args.imagesList:
+        docker_net(docker_client, args.dockNet)
+
     # Update
     if not args.update:
         try:
@@ -1441,16 +1468,6 @@ def main():
             sys.exit(1)
         else:
             sys.exit(0)
-
-    # Create Docker network if it doesn't exist
-    if not args.contStop \
-       and not args.contRemove \
-       and not args.info \
-       and not args.logs \
-       and not hasattr(args, 'saveImages') \
-       and not args.loadImages \
-       and not args.imagesList:
-        docker_net(docker_client, args.dockNet)
 
     # Set the project name and container names when projectSuffix is used, otherwise uses default from projectSuffix
     senzing_proj_name = args.projectSuffix if isinstance(args.projectSuffix, str) else args.projectSuffix[0]
@@ -1543,7 +1560,7 @@ def main():
             package_msg()
             sys.exit(1)
         else:
-            logger(f'Cannot access Docker Hub but a REST API server image is available to use (minimum requirement)')
+            logger('Cannot access Docker Hub but a REST API server image is available to use (minimum requirement)')
 
             # Find the newest tag for each available image and change the docker_containers['REST API Server']['tag'] for each image
             for k in docker_containers.keys():
@@ -1553,7 +1570,7 @@ def main():
 
                     images_to_sort = []
                     for image in images:
-                        # If there is > 1 images found remove latest to find the true 'latest' version and don't rely on the meaningless latest tag
+                        # If there is > 1 images found remove latest to find the true 'latest' version and don't rely on the latest tag
                         if len(images) > 1 and 'latest' in image.attrs["RepoTags"][0]:
                             continue
                         images_to_sort.append(image.attrs["RepoTags"][0])
@@ -1565,7 +1582,7 @@ def main():
 
     # Fix ini parms for mounting inside container, when db type is sqlite also perform cluster checks and return an additional
     # mount to use to mount the sqlite file(s) into the container.
-    db_type, ini_json_patched, sqlite_mount = patch_ini_json(ini_json)
+    db_type, ini_json_patched, sqlite_mount, license_file = patch_ini_json(ini_json)
 
     # Perform checks needed for mysql
     if db_type.lower() == 'mysql':
@@ -1576,7 +1593,11 @@ def main():
         db2_check(args, SENZING_SUPPORT)
 
     if db_type == 'mssql':
-        logger('MSSQL databases are not supported currently', LogCats.ERROR)
+        logger('MSSQL databases are not supported currently, please contact support@senzing.com', LogCats.ERROR)
+        sys.exit(1)
+
+    if db_type == 'oracle':
+        logger('Oracle databases are not supported currently, please contact support@senzing.com', LogCats.ERROR)
         sys.exit(1)
 
     # Write INI parms to file, could use init-json string but less secure
@@ -1608,11 +1629,29 @@ def main():
     # REST Server - this is the minimum container to start, can be started without others
     api_host_port = args.apiHostPort[0] if isinstance(args.apiHostPort, list) else args.apiHostPort
 
-    # Base volumes to mount in the container
-    api_volumes = {f'{SENZING_ROOT}': {'bind': '/opt/senzing/g2', 'mode': 'rw'},
-                   f'{SENZING_ROOT}/data': {'bind': '/opt/senzing/data', 'mode': 'rw'},
-                   f'{SENZING_ROOT}/etc': {'bind': '/etc/opt/senzing', 'mode': 'rw'},
-                   }
+    # Mounts from the project to the container
+    api_volumes = {
+        f'{SENZING_ROOT}/etc/G2Module.ini_SzGo.json': {'bind': '/etc/opt/senzing/G2Module.ini_SzGo.json', 'mode': 'ro'},
+        f'{SENZING_ROOT}/etc/cfgVariant.json': {'bind': '/etc/opt/senzing/cfgVariant.json', 'mode': 'ro'},
+        f'{SENZING_ROOT}/etc/customGn.txt': {'bind': '/etc/opt/senzing/customGn.txt', 'mode': 'ro'},
+        f'{SENZING_ROOT}/etc/customOn.txt': {'bind': '/etc/opt/senzing/customOn.txt', 'mode': 'ro'},
+        f'{SENZING_ROOT}/etc/customSn.txt': {'bind': '/etc/opt/senzing/customSn.txt', 'mode': 'ro'},
+        f'{SENZING_ROOT}/etc/defaultGNRCP.config': {'bind': '/etc/opt/senzing/defaultGNRCP.config', 'mode': 'ro'},
+        f'{SENZING_ROOT}/etc/stb.config': {'bind': '/etc/opt/senzing/stb.config', 'mode': 'ro'}
+    }
+
+    # Not present by default, check if is present
+    addr_cfg = Path(f'{SENZING_ROOT}/etc/addr.config')
+    if addr_cfg.is_file():
+        api_volumes[f'{SENZING_ROOT}/etc/addr.config'] = {'bind': '/etc/opt/senzing/addr.config', 'mode': 'ro'}
+
+    # Was LICENSEFILE in G2Module.ini, if not see if a g2.lic is present
+    if license_file:
+        api_volumes[license_file] = {'bind': f'/etc/opt/senzing/{Path(license_file).name}', 'mode': 'ro'}
+    else:
+        g2_lic = Path(f'{SENZING_ROOT}/etc/g2.lic')
+        if g2_lic.is_file():
+            api_volumes[str(g2_lic)] = {'bind': '/etc/opt/senzing/g2.lic', 'mode': 'ro'}
 
     # If db type is sqlite add extra mount for sqlite file(s) into container
     if sqlite_mount:
