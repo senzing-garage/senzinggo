@@ -1,4 +1,16 @@
- SenzingGo
+ # SenzingGo
+
+ If you are beginning your journey with
+[Senzing](https://senzing.com/),
+please start with
+[Senzing Quick Start guides](https://docs.senzing.com/quickstart/).
+
+You are in the
+[Senzing Garage](https://github.com/senzing-garage)
+where projects are "tinkered" on.
+Although this GitHub repository may help you understand an approach to using Senzing,
+it's not considered to be "production ready" and is not considered to be part of the Senzing product.
+Heck, it may not even be appropriate for your application of Senzing!
 
 ## QuickStart
 
@@ -12,8 +24,8 @@ python3 -m pip install docker
 ## Overview
 
 The SenzingGo utility provides rapid deployment of the following Docker containers on a bare metal Linux installation of the Senzing APIs:
-- [Senzing REST API Server](https://github.com/Senzing/senzing-api-server)
-- [Senzing Entity Search App (sample demo application)](https://github.com/Senzing/entity-search-web-app)
+- [Senzing REST API Server](https://github.com/senzing-garage/senzing-api-server)
+- [Senzing Entity Search App (sample demo application)](https://github.com/senzing-garage/entity-search-web-app)
 - [Swagger UI](https://swagger.io/tools/swagger-ui/)
 
 SenzingGo is intended to be easy to use and deploy resources quickly to aid in getting started with the Senzing APIs; without requiring Docker skills. Due to its rapid deployment and ease of use, it is targeted at testing, development and education. 
@@ -74,7 +86,7 @@ usage: SenzingGo.py [-h] [-c INIFILE] [-ap PORT] [-wp PORT] [-sp PORT] [-nwa] [-
 
 Utility to rapidly deploy Docker containers for REST API server, Entity Search App and Swagger UI
 
-Additional information: https://github.com/Senzing/senzinggo
+Additional information: https://github.com/senzing-garage/senzinggo
 
 optional arguments:
   -h, --help            show this help message and exit
