@@ -26,7 +26,7 @@ try:
     import docker
 except ImportError:
     print('\nPlease install the Python Docker module (pip3 install docker)')
-    print('\nAdditional information: https://github.com/Senzing/senzinggo\n')
+    print('\nAdditional information: https://github.com/senzing-garage/senzinggo\n')
     sys.exit(1)
 
 __all__ = []
@@ -73,7 +73,7 @@ class Format:
 def update_check_and_get():
     """ Check version numbers """
 
-    with urllib.request.urlopen("https://api.github.com/repos/senzing/SenzingGo/releases/latest", timeout=5) as rel_response:
+    with urllib.request.urlopen("https://api.github.com/repos/senzing-garage/SenzingGo/releases/latest", timeout=5) as rel_response:
         rel_ver = json.loads(rel_response.read())['name']
 
     # Senzing follows release versions of x.y.z
@@ -124,7 +124,7 @@ def update(senz_root):
 
     new_go_file = f'{senz_root}/python/SenzingGo.py_{rel_ver}'
 
-    with urllib.request.urlopen("https://raw.githubusercontent.com/Senzing/senzinggo/main/SenzingGo.py") as rel_response:
+    with urllib.request.urlopen("https://raw.githubusercontent.com/senzing-garage/senzinggo/main/SenzingGo.py") as rel_response:
         new_go = rel_response.read()
         with open(new_go_file, 'wb') as go:
             go.write(new_go)
@@ -308,7 +308,7 @@ def parse_versions(url):
 
     # #!/usr/bin/env bash
     #
-    # # Generated on 2021-10-05 by https://github.com/Senzing/dockerhub-util dockerhub-util.py version: 1.0.3 update: 2021-10-05
+    # # Generated on 2021-10-05 by https://github.com/senzing-factory/dockerhub-util dockerhub-util.py version: 1.0.3 update: 2021-10-05
     #
     # export SENZING_DOCKER_IMAGE_VERSION_ADMINER=1.0.0
     # export SENZING_DOCKER_IMAGE_VERSION_APT=1.0.5.post1
@@ -1149,14 +1149,14 @@ def main():
         LIB_MY_SQL = 'libmysqlclient.so.21'
 
     # URLs for required assets
-    DOCKER_LATEST_URL = 'https://raw.githubusercontent.com/Senzing/knowledge-base/main/lists/docker-versions-latest.sh'
-    DOCKER_STABLE_URL = 'https://raw.githubusercontent.com/Senzing/knowledge-base/main/lists/docker-versions-stable.sh'
+    DOCKER_LATEST_URL = 'https://raw.githubusercontent.com/senzing-garage/knowledge-base/main/lists/docker-versions-latest.sh'
+    DOCKER_STABLE_URL = 'https://raw.githubusercontent.com/senzing-garage/knowledge-base/main/lists/docker-versions-stable.sh'
     DOCKERHUB_URL = 'https://hub.docker.com/u/senzing/'
-    DOCKER_IMAGE_NAMES = 'https://raw.githubusercontent.com/Senzing/knowledge-base/master/lists/docker-image-names.json'
+    DOCKER_IMAGE_NAMES = 'https://raw.githubusercontent.com/senzing-garage/knowledge-base/master/lists/docker-image-names.json'
     # SENZING_AIR_GAP_INSTALL = 'https://senzing.zendesk.com/hc/en-us/articles/360039787373-Install-Air-Gapped-Systems'
 
     SENZING_SUPPORT = 'For further assistance contact support@senzing.com'
-    SZGO_HELP = 'https://github.com/Senzing/senzinggo'
+    SZGO_HELP = 'https://github.com/senzing-garage/senzinggo'
 
     # Dict of the containers required and details to use, names match project path/name to allow >1 project and containers
     docker_containers = \
