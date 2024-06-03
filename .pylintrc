@@ -16,6 +16,7 @@ disable=
     missing-module-docstring,
     no-else-return,
     no-value-for-parameter,
+    possibly-used-before-assignment,
     redefined-outer-name,
     simplifiable-condition,
     simplifiable-if-expression,
