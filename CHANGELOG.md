@@ -64,7 +64,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed in 1.5.2
 
-- Fix bug with saving imnages to a package
+- Fix bug with saving images to a package
 - Add detection of running in AWS and report public facing host & IP address
 - Add IP address to resources output
 
@@ -72,8 +72,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed in 1.5.1
 
-- Remove temporary use of transistional Docker assets URL used during Senzing V2 -> V3
-- Modified technique to collect the user ID running as to improve compatability with WSL2
+- Remove temporary use of transitional Docker assets URL used during Senzing V2 -> V3
+- Modified technique to collect the user ID running as to improve compatibility with WSL2
 
 ## [1.5.0] - 2022-05-04
 
